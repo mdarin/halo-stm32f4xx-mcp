@@ -17,8 +17,14 @@
 import json
 import hashlib
 import time
+import sys
 import requests
 from pathlib import Path
+
+# Установка кодировки UTF-8 для вывода (Windows)
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
 
 # ============================================================================
 # Конфигурация
@@ -42,17 +48,18 @@ CHUNK_OVERLAP = 100  # символов перекрытия
 
 def create_collection():
     """Создание коллекции Qdrant с hybrid search (vector + BM25)"""
-    print(f"Creating collection '{COLLECTION}'...")
+    print(f"Checking collection '{COLLECTION}'...")
     
     # Проверка существования
     resp = requests.get(f"{QDRANT_URL}/collections")
     if resp.status_code == 200:
         collections = resp.json().get("result", {}).get("collections", [])
         if any(c["name"] == COLLECTION for c in collections):
-            print(f"  Collection '{COLLECTION}' already exists, deleting...")
-            requests.delete(f"{QDRANT_URL}/collections/{COLLECTION}")
+            print(f"  ✅ Collection '{COLLECTION}' already exists")
+            return
     
     # Создание
+    print(f"  Creating collection '{COLLECTION}'...")
     resp = requests.put(f"{QDRANT_URL}/collections/{COLLECTION}", json={
         "vectors": {"size": 768, "distance": "Cosine"},
         "sparse_vectors": {"bm25": {}}
@@ -102,8 +109,10 @@ def check_ollama():
         resp = requests.get("http://localhost:11434/api/tags", timeout=5)
         resp.raise_for_status()
         models = [m["name"] for m in resp.json().get("models", [])]
-        if EMBED_MODEL not in models:
+        # Проверка: модель может быть "nomic-embed-text" или "nomic-embed-text:latest"
+        if not any(EMBED_MODEL in m for m in models):
             print(f"❌ Model '{EMBED_MODEL}' not found in Ollama")
+            print(f"   Available models: {models}")
             print(f"   Run: ollama pull {EMBED_MODEL}")
             return False
         return True
@@ -295,27 +304,59 @@ def index_all():
     print()
     create_collection()
     
+    # Проверка уже проиндексированных файлов
+    print(f"\n🔍 Checking existing points...")
+    indexed_files = set()
+    try:
+        resp = requests.post(
+            f"{QDRANT_URL}/collections/{COLLECTION}/points/scroll",
+            json={"limit": 1000, "with_payload": {"include": ["source_file"]}}
+        )
+        if resp.status_code == 200:
+            points = resp.json().get("result", {}).get("points", [])
+            for point in points:
+                source = point.get("payload", {}).get("source_file")
+                if source:
+                    indexed_files.add(source)
+            print(f"  Found {len(indexed_files)} already indexed files")
+    except Exception as e:
+        print(f"  ⚠️  Could not check existing points: {e}")
+    
+    # Фильтрация уже проиндексированных
+    files_to_index = [f for f in f407_files if f.get("file") not in indexed_files]
+    print(f"  Files to index: {len(files_to_index)}")
+    
+    if not files_to_index:
+        print("\n✅ All files already indexed!")
+        return
+    
     # Индексация
     print(f"\n🔄 Indexing files...")
     stats = {"files": 0, "chunks": 0, "errors": 0, "skipped": 0}
     all_points = []
     
-    for i, file_info in enumerate(f407_files):
+    for i, file_info in enumerate(files_to_index):
         file_name = file_info.get("file", "")
-        print(f"\r  [{i+1}/{len(f407_files)}] {file_name[:50]}...", end="", flush=True)
+        print(f"\r  [{i+1}/{len(files_to_index)}] {file_name[:50]}...", end="", flush=True)
         
         points = index_file(file_info, stats)
         all_points.extend(points)
         stats["files"] += 1
+        
+        # Промежуточная загрузка каждые 50 файлов
+        if len(all_points) >= 50:
+            upload_batch(all_points)
+            all_points = []
     
     print(f"\n\n  ✅ Indexed {stats['files']} files, {stats['chunks']} chunks")
     if stats["errors"]:
         print(f"  ⚠️  Errors: {stats['errors']}")
     
-    # Загрузка в Qdrant
-    print(f"\n📤 Uploading {len(all_points)} points to Qdrant...")
-    upload_batch(all_points)
-    print(f"  ✅ Uploaded")
+    # Загрузка оставшихся
+    if all_points:
+        print(f"\n📤 Uploading remaining {len(all_points)} points to Qdrant...")
+        upload_batch(all_points)
+        print(f"  ✅ Uploaded")
     
     # Индексация INDEX.md (семантический указатель)
     print(f"\n📇 Indexing INDEX.md as semantic guide...")
@@ -347,7 +388,6 @@ def index_all():
     print(f"\n📊 Statistics:")
     print(f"  Files indexed: {stats['files']}")
     print(f"  Chunks created: {stats['chunks']}")
-    print(f"  Points uploaded: {len(all_points) + 1}")  # +1 for INDEX.md
     print(f"  Errors: {stats['errors']}")
     
     print(f"\n🔍 Test search:")
