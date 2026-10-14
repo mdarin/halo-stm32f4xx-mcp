@@ -2,6 +2,9 @@
 data/
 *.log
 
+# Backups (разрешаем коммитить для версионирования)
+# backups/
+
 # Python
 __pycache__/
 *.py[cod]
