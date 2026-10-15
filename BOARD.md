@@ -26,166 +26,160 @@
 ## 🎯 Текущая задача
 
 ### Задача #3: MCP Server на Go (query_hardware_docs + базовые tools)
-**Статус:** 🟡 В процессе  
-**Приоритет:** Критичный путь  
-**Срок:** 5-7 дней  
-**Связь с TASK.md:** Фаза 2, Шаги 2.1-2.7  
+**Статус:** 🟡 В процессе (70%)
+**Приоритет:** Критичный путь
+**Срок:** 5-7 дней
+**Связь с TASK.md:** Фаза 2, Шаги 2.1-2.7
 **Дата начала:** 2026-10-14
+**Последнее обновление:** 2026-10-15
 
-**Цель:** Создать Go MCP tool для поиска по документации через Qdrant RAG.
+**Цель:** Создать MCP сервер на Go с инструментами для агента.
 
-**Почему это важно:**
-- Агент (Cursor/Cline) будет использовать этот инструмент для ответов на вопросы о регистрах, периферии, тактировании
-- Без этого инструмента агент не сможет использовать базу знаний
-- Это первый MCP tool из 9 запланированных
+#### ✅ Выполнено (70%):
 
-**Пункты для реализации:**
+- [x] **3.1 Структура Go проекта** (с MCP SDK v1.8.0)
+  - `mcp-server/go.mod` — Go 1.27 + `github.com/modelcontextprotocol/go-sdk v1.8.0`
+  - `mcp-server/main.go` — с официальным MCP SDK (`mcp.NewServer`, `mcp.AddTool`, `mcp.StdioTransport`)
+  - `mcp-server/internal/config/config.go` — конфигурация (env vars)
+  - `mcp-server/internal/rag/qdrant/client.go` — Qdrant HTTP клиент (`with_payload: true`)
+  - `mcp-server/internal/rag/embedder/client.go` — Ollama embedder (retry x3)
+  - `mcp-server/internal/rag/searcher/searcher.go` — RAG searcher (vector + filters)
 
-- [ ] **3.1 Создать структуру Go проекта**
-  - `mcp-server/go.mod`
-  - `mcp-server/main.go`
-  - `mcp-server/internal/rag/qdrant.go`
-  - `mcp-server/internal/rag/embedder.go`
-  - `mcp-server/internal/rag/searcher.go`
-  - `mcp-server/internal/transport/stdio.go`
-  - `mcp-server/internal/tools/query_docs.go`
+- [x] **3.2 MCP tool `query_hardware_docs`**
+  - Входные параметры: `query`, `peripheral` (optional), `limit` (optional)
+  - Выход: `SearchResult` (text, source, peripheral, chapter, section, title, score)
+  - Описание: "Search STM32F407 hardware documentation (RM0090)..."
+  - Регистрация через `mcp.AddTool` (официальный MCP SDK)
 
-- [ ] **3.2 Реализовать Qdrant клиент** (`internal/rag/qdrant.go`)
-  - Подключение к `http://localhost:6333`
-  - Метод `Search(collection, vector, limit, filters)`
-  - Обработка ошибок
-
-- [ ] **3.3 Реализовать Ollama embedder** (`internal/rag/embedder.go`)
-  - Подключение к `http://localhost:11434/api/embed`
-  - Модель `nomic-embed-text` (768 dims)
-  - Retry-логика (3 попытки)
-  - Кэширование эмбеддингов (опционально)
-
-- [ ] **3.4 Реализовать searcher** (`internal/rag/searcher.go`)
-  - Гибридный поиск (vector + BM25)
-  - Фильтры по `peripheral`, `registers`, `tags`
-  - Маппинг результатов в `SearchResult`
-
-- [ ] **3.5 Реализовать MCP tool** (`internal/tools/query_docs.go`)
-  - Название: `query_hardware_docs`
-  - Входные параметры: `query` (string), `peripheral` (optional string), `limit` (optional int)
-  - Выход: список `SearchResult` (text, peripheral, register, score, source)
-  - Описание для агента: "Search STM32F407 hardware documentation (RM0090) for registers, peripherals, clock configuration, etc."
-
-- [ ] **3.6 Реализовать STDIO транспорт** (`internal/transport/stdio.go`)
-  - Чтение JSON-RPC из stdin
-  - Запись ответов в stdout
+- [x] **3.3 STDIO транспорт** (через MCP SDK)
+  - `mcp.StdioTransport` из официального MCP SDK v1.8.0
+  - JSON-RPC 2.0 (полная совместимость с MCP spec)
   - Обработка методов: `initialize`, `tools/list`, `tools/call`
 
-- [ ] **3.7 Тестирование**
-  - Запуск: `go run .`
-  - Тест через MCP Inspector или Cursor
-  - Проверка поиска: "GPIO MODER" → `08_8_4_GPIO_registers.md`
-  - Проверка фильтров: peripheral=TIM → только таймеры
+- [x] **3.4 Тестирование STDIO protocol** (`scripts/test_mcp_server.py`)
+  - Тест 1: `initialize` ✅ (сервер: stm32f407-mcp v0.1.0)
+  - Тест 2: `tools/list` ✅ (1 инструмент: query_hardware_docs)
+  - Тест 3: `query_hardware_docs` (GPIO MODER) ✅ (score: 0.75)
+  - Тест 4: `query_hardware_docs` с фильтром peripheral=TIM ✅ (все результаты с TIM)
 
-**Критерии готовности:**
+- [x] **3.5 Компиляция и сборка**
+  - Binary: `mcp-server.exe` (13 MB)
+  - `go vet` ✅ passed
+  - `gofmt` ✅ applied
+  - Git commit: `3081157`
+
+- [x] **3.6 Документация** (`mcp-server/README.md`)
+  - Quick start, конфигурация, примеры использования
+  - Архитектура, тестирование, известные проблемы
+
+#### ⏳ Не выполнено (30%):
+
+**Приоритет 2 — важно (CubeMX tools):**
+- [ ] **3.7 `cubemx_read_user_blocks`** — чтение USER CODE блоков из main.c
+- [ ] **3.8 `cubemx_insert_code`** — безопасная вставка в USER CODE блоки
+- [ ] **3.9 `check_f407_rules`** — проверка аппаратных ограничений (CCM+DMA, NVIC, 48MHz)
+
+**Приоритет 3 — nice to have:**
+- [ ] **3.10 `cubemx_find_weak_overrides`** — поиск переопределённых __weak функций
+- [ ] **3.11 `cubemx_validate_project`** — валидация целостности CubeMX проекта
+- [ ] **3.12 J-Link tools** (flash_firmware, read_rtt_logs, debug_attach)
+
+**Интеграция:**
+- [ ] **3.13 Интеграция с Cursor/Cline** — добавить MCP сервер в `.cursor/mcp.json`
+
+**Критерии готовности (MVP):**
 - ✅ `query_hardware_docs` работает через STDIO
 - ✅ Поиск возвращает релевантные результаты (score > 0.5)
 - ✅ Фильтры по peripheral работают
-- ✅ Интеграция с Cursor/Cline проверена
+- ✅ Метаданные возвращаются (title, source, peripheral)
+- ✅ Тесты STDIO protocol пройдены (4/4)
+- ⏳ Интеграция с Cursor/Cline проверена
+- ⏳ CubeMX tools реализованы
 
-**Результат:**
-- Go binary `mcp-server.exe`
-- MCP tool `query_hardware_docs` готов к использованию
-- Агент может искать по документации RM0090
+**Результат (текущий):**
+- ✅ Go binary `mcp-server.exe` (13 MB, с MCP SDK v1.8.0)
+- ✅ MCP tool `query_hardware_docs` готов к использованию
+- ✅ Агент может искать по документации RM0090
+- ✅ Документация: `mcp-server/README.md`
+
+**Git commits:**
+- `3081157` — Add comprehensive MCP server documentation (README.md)
+- `1d2f6e6` — Fix Qdrant search to return payload metadata + add MCP server tests
+- `24a3f8a` — Refactor MCP server to use official MCP SDK v1.8.0
+- `633cb27` — Add Go MCP server skeleton with query_hardware_docs tool
+
+**Известные проблемы:**
+- ⚠️ `golangci-lint` v2.1.6 несовместим с Go 1.27.1 (используем `go vet` + `gofmt`)
+- ⚠️ MSYS2 Go (1.25.3) конфликтует с официальным Go (1.27.1) — используем `set PATH=C:\Program Files\Go\bin;%PATH%`
 
 ---
 
 ## 📦 Архив выполненных задач
 
-### Задача #2: Индексация в Qdrant ✅ ЗАВЕРШЕНА
-**Статус:** 🟢 Завершена  
-**Приоритет:** Критичный путь  
-**Срок:** 0.5 дня (фактически: ~4 часа с отладкой)  
-**Связь с TASK.md:** Фаза 1 (Qdrant) + Фаза 2 (RAG)  
+### Задача #2.5: Создание f407_known_issues.md ✅ ЗАВЕРШЕНА
+**Статус:** 🟢 Завершена
+**Приоритет:** Важно
+**Срок:** 1 час
 **Дата завершения:** 2026-10-14
 
 **Что сделано:**
+- [x] Создан `kb/hardware_pitfalls/f407_known_issues.md` (295 строк)
+- [x] 6 критических проблем F407:
+  1. CCM RAM + DMA — НЕСОВМЕСТИМО
+  2. NVIC Priority Grouping
+  3. USB/SDIO требуют 48 MHz
+  4. Таймеры APB1/APB2 умножают частоту
+  5. Boot configuration
+  6. Flash write protection (ROP)
+- [x] YAML frontmatter для RAG
+- [x] Проиндексирован в Qdrant (точка 364)
+- [x] Тест поиска: "DMA CCM RAM" → найден (score 0.6725)
 
-- [x] **2.1 Создан `docker-compose.yml`** (только Qdrant)
-  - Qdrant v1.19.0 в Docker
-  - REST API: localhost:6333
-  - gRPC: localhost:6334
-  - Volume: ./data/qdrant
+**Git commit:** `d58bb1f`
 
-- [x] **2.2 Создан `scripts/index_docs.py`**
-  - Чтение `kb/manifest.json` (обогащённый peripheral/registers/tags)
-  - Эмбеддинг через Ollama (nomic-embed-text, 768 dims)
-  - Загрузка в Qdrant коллекцию `stm32f407_docs`
-  - Фильтрация `not_on_f407 == true` (исключены F42x/43x)
-  - Resume support (пропуск уже проиндексированных файлов)
-  - Batch upload каждые 50 файлов
-  - UTF-8 кодировка для Windows
+---
 
-- [x] **2.3 Создан `scripts/enrich_manifest.py`**
-  - Автоматическое добавление peripheral/registers/tags в manifest.json
-  - Обогащено 427 из 428 файлов (99.8%)
+### Задача #2: Индексация в Qdrant ✅ ЗАВЕРШЕНА
+**Статус:** 🟢 Завершена
+**Приоритет:** Критичный путь
+**Срок:** 0.5 дня (фактически: ~4 часа с отладкой)
+**Дата завершения:** 2026-10-14
 
-- [x] **2.4 Создано виртуальное окружение Python**
-  - `venv/` с установленным `requests`
-  - Решение проблемы MSYS2 Python (PEP 668)
-
-- [x] **2.5 Запущен Qdrant в Docker**
-  - Команда: `docker compose up -d qdrant`
-  - Проверка: `curl http://localhost:6333/collections`
-
-- [x] **2.6 Запущена индексация**
-  - Команда: `venv\bin\python.exe scripts/index_docs.py`
-  - Время выполнения: ~15 минут
-  - Результат: **363 точки** загружены в коллекцию
-
-- [x] **2.7 Проверено качество поиска**
-  - Тест 1: "GPIO MODER register" → ✅ `08_8_4_GPIO_registers.md` (score: 0.7481)
-  - Тест 2: "TIM1 BDTR dead-time" → ✅ `17_17_4_18_TIM1_and_TIM8_break_and_deadtime_register_TIM.md` (score: 0.6350)
-  - Тест 3: "DMA CCM RAM" → ✅ `10_10_5_DMA_registers__c01.md` (score: 0.6527)
-  - Тест 4: "PWM configuration" с фильтром peripheral=TIM → ✅ `18_18_3_9_PWM_mode.md` (score: 0.6133)
+**Что сделано:**
+- [x] Создан `docker-compose.yml` (только Qdrant)
+- [x] Создан `scripts/index_docs.py` (индексация 363 файлов)
+- [x] Создан `scripts/enrich_manifest.py` (обогащение peripheral/registers/tags)
+- [x] Создано виртуальное окружение Python (`venv/`)
+- [x] Запущен Qdrant в Docker (порт 6333)
+- [x] Запущена индексация (363 точки → 364 с known_issues)
+- [x] Проверено качество поиска (score 0.61-0.75)
+- [x] Создан `scripts/qdrant_backup.py` (backup/restore)
+- [x] Создан `backups/BACKUP.md` (документация backup системы)
 
 **Результат:**
-- ✅ Коллекция `stm32f407_docs` создана (363 точки)
+- ✅ Коллекция `stm32f407_docs` создана (364 точки)
 - ✅ Все F407-relevant файлы проиндексированы
 - ✅ Поиск работает (векторный + фильтры по peripheral/registers/tags)
 - ✅ RAG готов к использованию
+- ✅ Backup система работает (1 backup создан, 9.05 MB)
+
+**Git commits:** `611977a`, `8722ed0`, `0339e75`
 
 ---
 
 ### Задача #1: Парсинг PDF документации через Marker ✅ ЗАВЕРШЕНА
-**Статус:** 🟢 Завершена  
-**Приоритет:** Критичный путь  
-**Срок:** 2-3 дня (фактически: выполнено ранее)  
-**Связь с TASK.md:** Фаза 0, Шаг 0.1  
+**Статус:** 🟢 Завершена
+**Приоритет:** Критичный путь
+**Срок:** 2-3 дня (фактически: выполнено ранее)
 **Дата завершения:** 2026-10-14
 
 **Что сделано:**
-
-- [x] **1.1 Распознан RM0090** (Reference Manual, ~1749 страниц)
-  - Инструмент: Marker (pdfplumber + LLM)
-  - Результат: 428 MD файлов в `kb/`
-
-- [x] **1.2 Создан `kb/manifest.json`**
-  - 428 записей с метаданными (chapter, section, title, bytes, not_on_f407)
-  - Обогащён полями peripheral/registers/tags (скрипт `enrich_manifest.py`)
-
-- [x] **1.3 Создан `kb/index.json`**
-  - Машинный индекс по главам
-  - Фильтр `not_on_f407` для F42x/43x
-
-- [x] **1.4 Создан `kb/INDEX.md`**
-  - Семантический указатель "задача → глава"
-  - 30 рецептов (GPIO, RCC, DMA, TIM, ADC, UART, SPI, I2C, CAN, USB, etc.)
-
-- [x] **1.5 Создан `kb/INGEST.md`**
-  - Инструкция по индексации в Qdrant
-  - Рекомендации по чанкингу и фильтрации
-
-- [x] **1.6 Разбиение на секции**
-  - Главы 1-39 (главы 6, 11, 15, 16, 29, 37 помечены как not_on_f407)
-  - Секции >30 КБ разбиты на чанки по `###` заголовкам
-  - HTML-таблицы конвертированы в Markdown
+- [x] Распознан RM0090 (Reference Manual, ~1749 страниц)
+- [x] Создан `kb/manifest.json` (428 записей с метаданными)
+- [x] Создан `kb/index.json` (машинный индекс по главам)
+- [x] Создан `kb/INDEX.md` (семантический указатель "задача → глава")
+- [x] Создан `kb/INGEST.md` (инструкция по индексации)
+- [x] Разбиение на секции (главы 1-39, 73 файла помечены not_on_f407)
 
 **Результат:**
 - ✅ 431 MD файл в `kb/` (428 секций + INDEX.md + INGEST.md + SPLIT_REPORT.md)
@@ -195,25 +189,32 @@
 
 ## 📝 Заметки
 
-**2026-10-14:**
+**2026-10-15 (обновлено):**
 - ✅ Задача #1 завершена: парсинг PDF (431 MD файл в kb/)
-- ✅ Задача #2 завершена: индексация в Qdrant (363 точки)
-- ✅ RAG работает: тестовый поиск показал отличные результаты (score 0.61-0.75)
-- 🔄 Задача #3: MCP tool `query_hardware_docs` (Go) — следующая
+- ✅ Задача #2 завершена: индексация в Qdrant (364 точки)
+- ✅ Задача #2.5 завершена: f407_known_issues.md (6 проблем, проиндексирован)
+- ✅ Задача #3 (70%): MCP Server на Go
+  - ✅ `query_hardware_docs` работает (MCP SDK v1.8.0, тесты 4/4)
+  - ⏳ CubeMX tools (read_user_blocks, insert_code, check_f407_rules)
+  - ⏳ Интеграция с Cursor/Cline
 
 **Стек технологий:**
-- **Qdrant** v1.19.0 (Docker, REST :6333, gRPC :6334)
+- **Qdrant** v1.19.0 (Docker, REST :6333, gRPC :6334, bind mount)
 - **Ollama** (nomic-embed-text, 768 dims, localhost:11434)
 - **Python 3.12** (venv, requests) — для скриптов индексации
-- **Go 1.22+** (планируется) — для MCP сервера
+- **Go 1.27.1** — для MCP сервера (с MCP SDK v1.8.0)
+- **MCP SDK** v1.8.0 (`github.com/modelcontextprotocol/go-sdk`)
 
 **Ссылки:**
 - Полный план: `TASK.md`
-- База знаний: `kb/` (431 MD файл)
-- Скрипты: `scripts/` (enrich_manifest.py, index_docs.py, test_search.py)
+- База знаний: `kb/` (432 MD файла)
+- MCP сервер: `mcp-server/` (Go, README.md)
+- Скрипты: `scripts/` (enrich_manifest.py, index_docs.py, qdrant_backup.py, test_mcp_server.py)
 - Docker: `docker-compose.yml` (Qdrant)
+- Backup: `backups/BACKUP.md` (инструкция)
 
 **Известные проблемы:**
 - ⚠️ Docker Desktop требует ручного запуска на Windows
 - ⚠️ MSYS2 Python блокирует pip (PEP 668) — используется venv
-- ⚠️ `f407_known_issues.md` не создан (опционально, но важно для проверки аппаратных ограничений)
+- ⚠️ MSYS2 Go (1.25.3) конфликтует с официальным Go (1.27.1) — используем `set PATH=C:\Program Files\Go\bin;%PATH%`
+- ⚠️ `golangci-lint` v2.1.6 несовместим с Go 1.27.1 — используем `go vet` + `gofmt`
