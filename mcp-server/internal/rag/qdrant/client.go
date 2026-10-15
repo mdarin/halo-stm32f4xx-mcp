@@ -45,37 +45,37 @@ func (c *Client) Search(ctx context.Context, collection string, vector []float32
 		"vector": vector,
 		"limit":  limit,
 	}
-	
+
 	if filter != nil {
 		reqBody["filter"] = filter
 	}
-	
+
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-	
+
 	url := fmt.Sprintf("%s/collections/%s/points/search", c.baseURL, collection)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("do request: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("qdrant returned status %d", resp.StatusCode)
 	}
-	
+
 	var searchResp SearchResponse
 	if err := json.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
-	
+
 	return searchResp.Result, nil
 }

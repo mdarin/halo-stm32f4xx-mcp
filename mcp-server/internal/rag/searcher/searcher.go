@@ -9,8 +9,8 @@ import (
 )
 
 type Searcher struct {
-	qdrant    *qdrant.Client
-	embedder  *embedder.Client
+	qdrant     *qdrant.Client
+	embedder   *embedder.Client
 	collection string
 }
 
@@ -38,7 +38,7 @@ func (s *Searcher) Search(ctx context.Context, query string, peripheral string, 
 	if err != nil {
 		return nil, fmt.Errorf("embed query: %w", err)
 	}
-	
+
 	// Построение фильтра
 	var filter map[string]interface{}
 	if peripheral != "" {
@@ -53,20 +53,20 @@ func (s *Searcher) Search(ctx context.Context, query string, peripheral string, 
 			},
 		}
 	}
-	
+
 	// Поиск в Qdrant
 	hits, err := s.qdrant.Search(ctx, s.collection, vector, limit, filter)
 	if err != nil {
 		return nil, fmt.Errorf("qdrant search: %w", err)
 	}
-	
+
 	// Маппинг результатов
 	results := make([]SearchResult, 0, len(hits))
 	for _, hit := range hits {
 		result := SearchResult{
 			Score: hit.Score,
 		}
-		
+
 		// Извлечение полей из payload
 		if text, ok := hit.Payload["text"].(string); ok {
 			result.Text = text
@@ -86,9 +86,9 @@ func (s *Searcher) Search(ctx context.Context, query string, peripheral string, 
 		if title, ok := hit.Payload["title"].(string); ok {
 			result.Title = title
 		}
-		
+
 		results = append(results, result)
 	}
-	
+
 	return results, nil
 }
