@@ -57,7 +57,7 @@ type CheckF407RulesOutput struct {
 
 // ReadUserBlocksInput — входные параметры для cubemx_read_user_blocks
 type ReadUserBlocksInput struct {
-	ProjectRoot string `json:"project_root" jsonschema:"the root directory of the CubeMX project"`
+	ProjectRoot string `json:"project_root,omitempty" jsonschema:"the root directory of the CubeMX project"`
 	FilePath    string `json:"file_path,omitempty" jsonschema:"optional specific file to parse (if empty, parses entire project)"`
 }
 
