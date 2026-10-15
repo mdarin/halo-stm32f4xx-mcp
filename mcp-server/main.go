@@ -68,6 +68,24 @@ type ReadUserBlocksOutput struct {
 	FilesCount  int                  `json:"files_count"`
 }
 
+// InsertCodeInput — входные параметры для cubemx_insert_code
+type InsertCodeInput struct {
+	FilePath  string `json:"file_path" jsonschema:"path to the CubeMX-generated .c file"`
+	BlockName string `json:"block_name" jsonschema:"name of the USER CODE block (e.g., 'Includes', 'PV', '2', '4')"`
+	Code      string `json:"code" jsonschema:"the C code to insert into the block"`
+	Mode      string `json:"mode,omitempty" jsonschema:"insert mode: 'append' (add to end) or 'replace' (replace content). Default: append"`
+}
+
+// InsertCodeOutput — результат вставки кода
+type InsertCodeOutput struct {
+	FilePath     string `json:"file_path"`
+	BlockName    string `json:"block_name"`
+	Mode         string `json:"mode"`
+	BytesWritten int    `json:"bytes_written"`
+	Success      bool   `json:"success"`
+	Message      string `json:"message"`
+}
+
 // queryDocsHandler — обработчик инструмента query_hardware_docs
 func queryDocsHandler(ctx context.Context, req *mcp.CallToolRequest, input QueryDocsInput) (
 	*mcp.CallToolResult,
@@ -143,6 +161,46 @@ func readUserBlocksHandler(ctx context.Context, req *mcp.CallToolRequest, input 
 
 	for _, r := range results {
 		output.Files = append(output.Files, *r)
+	}
+
+	return nil, output, nil
+}
+
+// insertCodeHandler — обработчик инструмента cubemx_insert_code
+func insertCodeHandler(ctx context.Context, req *mcp.CallToolRequest, input InsertCodeInput) (
+	*mcp.CallToolResult,
+	InsertCodeOutput,
+	error,
+) {
+	if globalPatcher == nil {
+		return nil, InsertCodeOutput{}, fmt.Errorf("patcher not initialized")
+	}
+
+	// Установка режима по умолчанию
+	mode := cubemx.InsertModeAppend
+	if input.Mode == "replace" {
+		mode = cubemx.InsertModeReplace
+	}
+
+	insertReq := &cubemx.InsertRequest{
+		FilePath:  input.FilePath,
+		BlockName: input.BlockName,
+		Code:      input.Code,
+		Mode:      mode,
+	}
+
+	result, err := globalPatcher.InsertCode(insertReq)
+	if err != nil {
+		return nil, InsertCodeOutput{}, fmt.Errorf("insert code failed: %w", err)
+	}
+
+	output := InsertCodeOutput{
+		FilePath:     result.FilePath,
+		BlockName:    result.BlockName,
+		Mode:         result.Mode,
+		BytesWritten: result.BytesWritten,
+		Success:      result.Success,
+		Message:      result.Message,
 	}
 
 	return nil, output, nil
@@ -256,9 +314,10 @@ func checkFlashROP(code string) *Violation {
 	return nil
 }
 
-// Глобальные переменные для searcher и parser (будут инициализированы в main)
+// Глобальные переменные для searcher, parser и patcher (будут инициализированы в main)
 var globalSearcher *searcher.Searcher
 var globalParser *cubemx.Parser
+var globalPatcher *cubemx.Patcher
 
 func main() {
 	// Загрузка конфигурации
@@ -276,12 +335,13 @@ func main() {
 	embedderClient := embedder.NewClient(cfg.OllamaURL, cfg.Model)
 	globalSearcher = searcher.NewSearcher(qdrantClient, embedderClient, cfg.Collection)
 	globalParser = cubemx.NewParser()
+	globalPatcher = cubemx.NewPatcher()
 
 	// Создание MCP сервера
 	server := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "stm32f407-mcp",
-			Version: "0.3.0", // Обновлена версия (добавлен cubemx_read_user_blocks)
+			Version: "0.4.0", // Обновлена версия (добавлен cubemx_insert_code)
 		},
 		nil, // options
 	)
@@ -316,7 +376,17 @@ func main() {
 		readUserBlocksHandler,
 	)
 
-	log.Printf("Registered tools: query_hardware_docs, check_f407_rules, cubemx_read_user_blocks")
+	// Регистрация инструмента cubemx_insert_code
+	mcp.AddTool(
+		server,
+		&mcp.Tool{
+			Name:        "cubemx_insert_code",
+			Description: "Safely insert C code into a CubeMX USER CODE block. NEVER writes outside BEGIN/END markers. Supports 'append' (add to end of block) and 'replace' (replace block content) modes. Use cubemx_read_user_blocks first to see available blocks.",
+		},
+		insertCodeHandler,
+	)
+
+	log.Printf("Registered tools: query_hardware_docs, check_f407_rules, cubemx_read_user_blocks, cubemx_insert_code")
 	log.Printf("MCP Server ready, listening on stdin...")
 
 	// Запуск STDIO транспорта

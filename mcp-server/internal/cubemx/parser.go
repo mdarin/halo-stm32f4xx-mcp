@@ -51,54 +51,54 @@ func (p *Parser) ParseContent(content string, filePath string) (*ParseResult, er
 	// Go regex не поддерживает backreference \1, поэтому используем двухэтапный подход:
 	// 1. Находим все USER CODE BEGIN с их позициями
 	// 2. Для каждого BEGIN ищем соответствующий END с тем же именем
-	
+
 	beginPattern := regexp.MustCompile(`/\*\s*USER CODE BEGIN ([\w\s]+?)\s*\*/`)
 	endPatternTemplate := `/\*\s*USER CODE END %s\s*\*/`
-	
+
 	beginMatches := beginPattern.FindAllStringSubmatchIndex(content, -1)
-	
+
 	for _, beginMatch := range beginMatches {
 		if len(beginMatch) < 4 {
 			continue
 		}
-		
+
 		// Извлечение имени блока
 		nameStart := beginMatch[2]
 		nameEnd := beginMatch[3]
 		name := strings.TrimSpace(content[nameStart:nameEnd])
-		
+
 		// Создание паттерна для END с тем же именем
 		endPattern := regexp.MustCompile(fmt.Sprintf(endPatternTemplate, regexp.QuoteMeta(name)))
-		
+
 		// Поиск END после текущего BEGIN
 		searchStart := beginMatch[1] // Конец BEGIN комментария
 		remainingContent := content[searchStart:]
-		
+
 		endMatch := endPattern.FindStringIndex(remainingContent)
 		if endMatch == nil {
 			continue // Нет соответствующего END, пропускаем
 		}
-		
+
 		// Извлечение содержимого между BEGIN и END
 		contentEnd := searchStart + endMatch[0] // Начало END комментария
-		
+
 		// Корректировка: нужно найти конец BEGIN комментария
 		beginCommentEnd := beginMatch[1]
 		blockContent := content[beginCommentEnd:contentEnd]
-		
+
 		// Очистка содержимого
 		blockContent = strings.TrimSpace(blockContent)
-		
+
 		// Вычисление номера строки
 		line := strings.Count(content[:beginMatch[0]], "\n") + 1
-		
+
 		block := UserBlock{
 			Name:    name,
 			Content: blockContent,
 			Line:    line,
 			File:    filePath,
 		}
-		
+
 		result.Blocks = append(result.Blocks, block)
 	}
 
