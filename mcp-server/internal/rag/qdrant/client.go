@@ -42,8 +42,9 @@ func NewClient(baseURL string) *Client {
 
 func (c *Client) Search(ctx context.Context, collection string, vector []float32, limit int, filter map[string]interface{}) ([]SearchHit, error) {
 	reqBody := map[string]interface{}{
-		"vector": vector,
-		"limit":  limit,
+		"vector":       vector,
+		"limit":        limit,
+		"with_payload": true,
 	}
 
 	if filter != nil {
