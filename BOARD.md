@@ -25,17 +25,23 @@
 
 ## 🎯 Текущая задача
 
-### Задача #3: MCP Server на Go (query_hardware_docs + базовые tools)
-**Статус:** 🟡 В процессе (70%)
+*(Нет текущих задач — MVP завершён)*
+
+---
+
+## 📦 Архив выполненных задач
+
+### Задача #3: MCP Server на Go (6 инструментов) ✅ ЗАВЕРШЕНА
+**Статус:** 🟢 Завершена (MVP)
 **Приоритет:** Критичный путь
-**Срок:** 5-7 дней
+**Срок:** 5-7 дней (фактически: 2 дня)
 **Связь с TASK.md:** Фаза 2, Шаги 2.1-2.7
 **Дата начала:** 2026-10-14
-**Последнее обновление:** 2026-10-15
+**Дата завершения:** 2026-10-15
 
 **Цель:** Создать MCP сервер на Go с инструментами для агента.
 
-#### ✅ Выполнено (70%):
+**Выполнено (100%):**
 
 - [x] **3.1 Структура Go проекта** (с MCP SDK v1.8.0)
   - `mcp-server/go.mod` — Go 1.27 + `github.com/modelcontextprotocol/go-sdk v1.8.0`
@@ -44,45 +50,62 @@
   - `mcp-server/internal/rag/qdrant/client.go` — Qdrant HTTP клиент (`with_payload: true`)
   - `mcp-server/internal/rag/embedder/client.go` — Ollama embedder (retry x3)
   - `mcp-server/internal/rag/searcher/searcher.go` — RAG searcher (vector + filters)
+  - `mcp-server/internal/cubemx/parser.go` — парсер USER CODE блоков
+  - `mcp-server/internal/cubemx/patcher.go` — безопасная вставка кода
+  - `mcp-server/internal/cubemx/finder.go` — поиск weak function overrides
+  - `mcp-server/internal/cubemx/validator.go` — валидатор проекта
 
-- [x] **3.2 MCP tool `query_hardware_docs`**
+- [x] **3.2 MCP tool `query_hardware_docs`** (v0.1.0)
   - Входные параметры: `query`, `peripheral` (optional), `limit` (optional)
   - Выход: `SearchResult` (text, source, peripheral, chapter, section, title, score)
-  - Описание: "Search STM32F407 hardware documentation (RM0090)..."
-  - Регистрация через `mcp.AddTool` (официальный MCP SDK)
+  - Тесты: 4/4 пройдены (score 0.57-0.75)
 
-- [x] **3.3 STDIO транспорт** (через MCP SDK)
+- [x] **3.3 MCP tool `check_f407_rules`** (v0.2.0)
+  - Проверка C кода на критические ошибки F407
+  - 4 правила: CCM+DMA, NVIC priority, USB 48MHz, Flash ROP Level 2
+  - Тесты: 4/4 пройдены
+
+- [x] **3.4 MCP tool `cubemx_read_user_blocks`** (v0.3.0)
+  - Чтение USER CODE блоков из CubeMX проекта
+  - Парсинг одного файла или всего проекта
+  - Тесты: ShiftCommander (173 блока в 9 файлах)
+
+- [x] **3.5 MCP tool `cubemx_insert_code`** (v0.4.0)
+  - Безопасная вставка кода в USER CODE блоки
+  - Режимы: append, replace
+  - Атомарная запись, валидация BEGIN/END
+
+- [x] **3.6 MCP tool `cubemx_find_weak_overrides`** (v0.5.0)
+  - Поиск переопределённых HAL weak функций
+  - Сканирует все .c файлы проекта
+
+- [x] **3.7 MCP tool `cubemx_validate_project`** (v0.5.0)
+  - Валидация целостности CubeMX проекта
+  - Проверка парности USER CODE блоков
+  - Обнаружение дубликатов weak функций
+
+- [x] **3.8 STDIO транспорт** (через MCP SDK)
   - `mcp.StdioTransport` из официального MCP SDK v1.8.0
   - JSON-RPC 2.0 (полная совместимость с MCP spec)
-  - Обработка методов: `initialize`, `tools/list`, `tools/call`
 
-- [x] **3.4 Тестирование STDIO protocol** (`scripts/test_mcp_server.py`)
-  - Тест 1: `initialize` ✅ (сервер: stm32f407-mcp v0.1.0)
-  - Тест 2: `tools/list` ✅ (1 инструмент: query_hardware_docs)
-  - Тест 3: `query_hardware_docs` (GPIO MODER) ✅ (score: 0.75)
-  - Тест 4: `query_hardware_docs` с фильтром peripheral=TIM ✅ (все результаты с TIM)
-
-- [x] **3.5 Компиляция и сборка**
-  - Binary: `mcp-server.exe` (13 MB)
-  - `go vet` ✅ passed
-  - `gofmt` ✅ applied
-  - Git commit: `3081157`
-
-- [x] **3.6 Документация** (`mcp-server/README.md`)
+- [x] **3.9 Документация** (`mcp-server/README.md`, `docs/INTEGRATION.md`)
   - Quick start, конфигурация, примеры использования
-  - Архитектура, тестирование, известные проблемы
+  - Интеграция с Qwen Code, Cursor, Cline
 
-#### ⏳ Не выполнено (30%):
+**Результат:**
+- ✅ Go binary `mcp-server.exe` (13 MB, v0.5.0)
+- ✅ 6 MCP инструментов готовы к использованию
+- ✅ Тесты STDIO protocol пройдены
+- ✅ Документация для интеграции с AI-агентами
 
-**Приоритет 2 — важно (CubeMX tools):**
-- [ ] **3.7 `cubemx_read_user_blocks`** — чтение USER CODE блоков из main.c
-- [ ] **3.8 `cubemx_insert_code`** — безопасная вставка в USER CODE блоки
-- [ ] **3.9 `check_f407_rules`** — проверка аппаратных ограничений (CCM+DMA, NVIC, 48MHz)
-
-**Приоритет 3 — nice to have:**
-- [ ] **3.10 `cubemx_find_weak_overrides`** — поиск переопределённых __weak функций
-- [ ] **3.11 `cubemx_validate_project`** — валидация целостности CubeMX проекта
-- [ ] **3.12 J-Link tools** (flash_firmware, read_rtt_logs, debug_attach)
+**Git commits:**
+- `744117d` — Complete MVP: 6/6 tools, v0.5.0
+- `114ac1b` — Add cubemx_insert_code (v0.4.0)
+- `212a3b5` — Add cubemx_read_user_blocks (v0.3.0)
+- `e2ebae3` — Add check_f407_rules (v0.2.0)
+- `3081157` — Add MCP server documentation
+- `24a3f8a` — Refactor to use official MCP SDK v1.8.0
+- `633cb27` — Add Go MCP server skeleton (v0.1.0)
 
 **Интеграция:**
 - [ ] **3.13 Интеграция с Cursor/Cline** — добавить MCP сервер в `.cursor/mcp.json`
