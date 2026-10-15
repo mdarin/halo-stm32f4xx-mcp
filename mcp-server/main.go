@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/config"
+	"github.com/mdari/halo-f407-mcp/mcp-server/internal/cubemx"
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/rag/embedder"
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/rag/qdrant"
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/rag/searcher"
@@ -54,6 +55,19 @@ type CheckF407RulesOutput struct {
 	Violations      []Violation `json:"violations"`
 }
 
+// ReadUserBlocksInput — входные параметры для cubemx_read_user_blocks
+type ReadUserBlocksInput struct {
+	ProjectRoot string `json:"project_root" jsonschema:"the root directory of the CubeMX project"`
+	FilePath    string `json:"file_path,omitempty" jsonschema:"optional specific file to parse (if empty, parses entire project)"`
+}
+
+// ReadUserBlocksOutput — результат чтения USER CODE блоков
+type ReadUserBlocksOutput struct {
+	Files       []cubemx.ParseResult `json:"files"`
+	TotalBlocks int                  `json:"total_blocks"`
+	FilesCount  int                  `json:"files_count"`
+}
+
 // queryDocsHandler — обработчик инструмента query_hardware_docs
 func queryDocsHandler(ctx context.Context, req *mcp.CallToolRequest, input QueryDocsInput) (
 	*mcp.CallToolResult,
@@ -82,6 +96,53 @@ func queryDocsHandler(ctx context.Context, req *mcp.CallToolRequest, input Query
 		Peripheral: input.Peripheral,
 		Count:      len(results),
 		Results:    results,
+	}
+
+	return nil, output, nil
+}
+
+// readUserBlocksHandler — обработчик инструмента cubemx_read_user_blocks
+func readUserBlocksHandler(ctx context.Context, req *mcp.CallToolRequest, input ReadUserBlocksInput) (
+	*mcp.CallToolResult,
+	ReadUserBlocksOutput,
+	error,
+) {
+	if globalParser == nil {
+		return nil, ReadUserBlocksOutput{}, fmt.Errorf("parser not initialized")
+	}
+
+	var results []*cubemx.ParseResult
+	var err error
+
+	if input.FilePath != "" {
+		// Парсинг одного файла
+		result, err := globalParser.ParseFile(input.FilePath)
+		if err != nil {
+			return nil, ReadUserBlocksOutput{}, fmt.Errorf("parse file failed: %w", err)
+		}
+		results = append(results, result)
+	} else {
+		// Парсинг всего проекта
+		results, err = globalParser.ParseProject(input.ProjectRoot)
+		if err != nil {
+			return nil, ReadUserBlocksOutput{}, fmt.Errorf("parse project failed: %w", err)
+		}
+	}
+
+	// Подсчёт общего количества блоков
+	totalBlocks := 0
+	for _, r := range results {
+		totalBlocks += r.BlocksCount
+	}
+
+	output := ReadUserBlocksOutput{
+		Files:       make([]cubemx.ParseResult, 0, len(results)),
+		TotalBlocks: totalBlocks,
+		FilesCount:  len(results),
+	}
+
+	for _, r := range results {
+		output.Files = append(output.Files, *r)
 	}
 
 	return nil, output, nil
@@ -195,8 +256,9 @@ func checkFlashROP(code string) *Violation {
 	return nil
 }
 
-// Глобальная переменная для searcher (будет инициализирована в main)
+// Глобальные переменные для searcher и parser (будут инициализированы в main)
 var globalSearcher *searcher.Searcher
+var globalParser *cubemx.Parser
 
 func main() {
 	// Загрузка конфигурации
@@ -213,12 +275,13 @@ func main() {
 	qdrantClient := qdrant.NewClient(cfg.QdrantURL)
 	embedderClient := embedder.NewClient(cfg.OllamaURL, cfg.Model)
 	globalSearcher = searcher.NewSearcher(qdrantClient, embedderClient, cfg.Collection)
+	globalParser = cubemx.NewParser()
 
 	// Создание MCP сервера
 	server := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "stm32f407-mcp",
-			Version: "0.2.0", // Обновлена версия (добавлен check_f407_rules)
+			Version: "0.3.0", // Обновлена версия (добавлен cubemx_read_user_blocks)
 		},
 		nil, // options
 	)
@@ -243,7 +306,17 @@ func main() {
 		checkF407RulesHandler,
 	)
 
-	log.Printf("Registered tools: query_hardware_docs, check_f407_rules")
+	// Регистрация инструмента cubemx_read_user_blocks
+	mcp.AddTool(
+		server,
+		&mcp.Tool{
+			Name:        "cubemx_read_user_blocks",
+			Description: "Read all USER CODE blocks from CubeMX-generated project files. Returns list of blocks with name, content, line number, and file path. Can parse single file or entire project. Use this BEFORE modifying any CubeMX-generated code to understand existing user code.",
+		},
+		readUserBlocksHandler,
+	)
+
+	log.Printf("Registered tools: query_hardware_docs, check_f407_rules, cubemx_read_user_blocks")
 	log.Printf("MCP Server ready, listening on stdin...")
 
 	// Запуск STDIO транспорта
