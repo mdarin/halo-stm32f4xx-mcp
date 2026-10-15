@@ -86,6 +86,32 @@ type InsertCodeOutput struct {
 	Message      string `json:"message"`
 }
 
+// FindWeakOverridesInput — входные параметры для cubemx_find_weak_overrides
+type FindWeakOverridesInput struct {
+	ProjectRoot string `json:"project_root" jsonschema:"the root directory of the CubeMX project"`
+}
+
+// FindWeakOverridesOutput — результат поиска переопределённых weak функций
+type FindWeakOverridesOutput struct {
+	Overrides []cubemx.WeakOverride `json:"overrides"`
+	Count     int                   `json:"count"`
+}
+
+// ValidateProjectInput — входные параметры для cubemx_validate_project
+type ValidateProjectInput struct {
+	ProjectRoot string `json:"project_root" jsonschema:"the root directory of the CubeMX project"`
+}
+
+// ValidateProjectOutput — результат валидации проекта
+type ValidateProjectOutput struct {
+	Valid         bool     `json:"valid"`
+	Errors        []string `json:"errors"`
+	Warnings      []string `json:"warnings"`
+	CubeMXVersion string   `json:"cubemx_version"`
+	FilesCount    int      `json:"files_count"`
+	BlocksCount   int      `json:"blocks_count"`
+}
+
 // queryDocsHandler — обработчик инструмента query_hardware_docs
 func queryDocsHandler(ctx context.Context, req *mcp.CallToolRequest, input QueryDocsInput) (
 	*mcp.CallToolResult,
@@ -206,6 +232,56 @@ func insertCodeHandler(ctx context.Context, req *mcp.CallToolRequest, input Inse
 	return nil, output, nil
 }
 
+// findWeakOverridesHandler — обработчик инструмента cubemx_find_weak_overrides
+func findWeakOverridesHandler(ctx context.Context, req *mcp.CallToolRequest, input FindWeakOverridesInput) (
+	*mcp.CallToolResult,
+	FindWeakOverridesOutput,
+	error,
+) {
+	if globalFinder == nil {
+		return nil, FindWeakOverridesOutput{}, fmt.Errorf("finder not initialized")
+	}
+
+	overrides, err := globalFinder.FindOverrides(input.ProjectRoot)
+	if err != nil {
+		return nil, FindWeakOverridesOutput{}, fmt.Errorf("find overrides failed: %w", err)
+	}
+
+	output := FindWeakOverridesOutput{
+		Overrides: overrides,
+		Count:     len(overrides),
+	}
+
+	return nil, output, nil
+}
+
+// validateProjectHandler — обработчик инструмента cubemx_validate_project
+func validateProjectHandler(ctx context.Context, req *mcp.CallToolRequest, input ValidateProjectInput) (
+	*mcp.CallToolResult,
+	ValidateProjectOutput,
+	error,
+) {
+	if globalValidator == nil {
+		return nil, ValidateProjectOutput{}, fmt.Errorf("validator not initialized")
+	}
+
+	result, err := globalValidator.ValidateProject(input.ProjectRoot)
+	if err != nil {
+		return nil, ValidateProjectOutput{}, fmt.Errorf("validate project failed: %w", err)
+	}
+
+	output := ValidateProjectOutput{
+		Valid:         result.Valid,
+		Errors:        result.Errors,
+		Warnings:      result.Warnings,
+		CubeMXVersion: result.CubeMXVersion,
+		FilesCount:    result.FilesCount,
+		BlocksCount:   result.BlocksCount,
+	}
+
+	return nil, output, nil
+}
+
 // checkF407RulesHandler — обработчик инструмента check_f407_rules
 func checkF407RulesHandler(ctx context.Context, req *mcp.CallToolRequest, input CheckF407RulesInput) (
 	*mcp.CallToolResult,
@@ -314,10 +390,12 @@ func checkFlashROP(code string) *Violation {
 	return nil
 }
 
-// Глобальные переменные для searcher, parser и patcher (будут инициализированы в main)
+// Глобальные переменные для searcher, parser, patcher, finder и validator (будут инициализированы в main)
 var globalSearcher *searcher.Searcher
 var globalParser *cubemx.Parser
 var globalPatcher *cubemx.Patcher
+var globalFinder *cubemx.Finder
+var globalValidator *cubemx.Validator
 
 func main() {
 	// Загрузка конфигурации
@@ -336,12 +414,14 @@ func main() {
 	globalSearcher = searcher.NewSearcher(qdrantClient, embedderClient, cfg.Collection)
 	globalParser = cubemx.NewParser()
 	globalPatcher = cubemx.NewPatcher()
+	globalFinder = cubemx.NewFinder()
+	globalValidator = cubemx.NewValidator()
 
 	// Создание MCP сервера
 	server := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "stm32f407-mcp",
-			Version: "0.4.0", // Обновлена версия (добавлен cubemx_insert_code)
+			Version: "0.5.0", // Обновлена версия (добавлены все 6 инструментов)
 		},
 		nil, // options
 	)
@@ -386,8 +466,28 @@ func main() {
 		insertCodeHandler,
 	)
 
-	log.Printf("Registered tools: query_hardware_docs, check_f407_rules, cubemx_read_user_blocks, cubemx_insert_code")
-	log.Printf("MCP Server ready, listening on stdin...")
+	// Регистрация инструмента cubemx_find_weak_overrides
+	mcp.AddTool(
+		server,
+		&mcp.Tool{
+			Name:        "cubemx_find_weak_overrides",
+			Description: "Find all HAL weak function overrides in a CubeMX project. Scans all .c files for functions like HAL_GPIO_MspInit, HAL_TIM_PeriodElapsedCallback, etc. Use BEFORE creating a new override to avoid duplicates.",
+		},
+		findWeakOverridesHandler,
+	)
+
+	// Регистрация инструмента cubemx_validate_project
+	mcp.AddTool(
+		server,
+		&mcp.Tool{
+			Name:        "cubemx_validate_project",
+			Description: "Validate CubeMX project integrity BEFORE making changes. Checks: main.c exists, USER CODE blocks are balanced, no duplicate weak overrides, detects CubeMX version. Call this FIRST before any project modifications.",
+		},
+		validateProjectHandler,
+	)
+
+	log.Printf("Registered tools: query_hardware_docs, check_f407_rules, cubemx_read_user_blocks, cubemx_insert_code, cubemx_find_weak_overrides, cubemx_validate_project")
+	log.Printf("MCP Server ready (v0.5.0, 6 tools), listening on stdin...")
 
 	// Запуск STDIO транспорта
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
