@@ -188,6 +188,11 @@ venv\bin\python.exe scripts/qdrant_backup.py restore
   "timestamp": "20261014_205531",
   "points_count": 363,
   "vector_size": 768,
+  "mcp_server": {
+    "module": "github.com/mdari/halo-f407-mcp/mcp-server",
+    "sdk_version": "v1.8.0",
+    "git_commit": "3081157"
+  },
   "points": [
     {
       "id": 123456789,
@@ -210,6 +215,16 @@ venv\bin\python.exe scripts/qdrant_backup.py restore
   ]
 }
 ```
+
+**Версионирование MCP сервера (добавлено 2026-10-15):**
+- `mcp_server.module` — имя Go модуля из `go.mod`
+- `mcp_server.sdk_version` — версия MCP SDK (например, `v1.8.0`)
+- `mcp_server.git_commit` — короткий hash текущего git commit
+
+**Зачем нужно версионирование:**
+- При восстановлении backup можно проверить совместимость с текущей версией MCP сервера
+- Если версия MCP SDK изменилась — может потребоваться переиндексация
+- Git commit позволяет точно определить, какая версия кода использовалась при создании backup
 
 ### Размер backup'а
 
@@ -247,12 +262,58 @@ venv\bin\python.exe scripts/qdrant_backup.py restore
 - 📊 Точки: 363
 - 💾 Размер: 9.05 MB
 - 📅 Дата: 2026-10-14 20:55:31
+- 🔧 MCP Server: (версионирование добавлено позже, см. ниже)
+
+**Второй backup (2026-10-15, с версионированием):**
+- 📦 Файл: `qdrant_backup_20261015_*.json`
+- 📊 Точки: 364 (включая `f407_known_issues.md`)
+- 💾 Размер: ~9.1 MB
+- 📅 Дата: 2026-10-15
+- 🔧 MCP Server:
+  - Module: `github.com/mdari/halo-f407-mcp/mcp-server`
+  - SDK: `v1.8.0`
+  - Git commit: `3081157` (или новее)
 
 **Коллекция `stm32f407_docs`:**
-- 📊 Точки: 363 (все F407-relevant файлы)
+- 📊 Точки: 364 (все F407-relevant файлы + known_issues)
 - 🧬 Вектор: 768 dims (nomic-embed-text)
 - 🏷️ Метаданные: peripheral, registers, tags, chapter, section
-- 📁 Источник: `kb/` (431 MD файл, 73 исключены как not_on_f407)
+- 📁 Источник: `kb/` (432 MD файла, 73 исключены как not_on_f407)
+
+---
+
+## 🔄 Версионирование MCP сервера (добавлено 2026-10-15)
+
+**Что сохраняется в backup:**
+- `mcp_server.module` — имя Go модуля из `mcp-server/go.mod`
+- `mcp_server.sdk_version` — версия MCP SDK (например, `v1.8.0`)
+- `mcp_server.git_commit` — короткий hash текущего git commit
+
+**Как это работает:**
+```python
+# Скрипт автоматически извлекает версии при создании backup:
+mcp_module = get_mcp_version()      # из go.mod
+mcp_sdk = get_mcp_sdk_version()     # из go.mod (modelcontextprotocol/go-sdk)
+git_commit = get_git_commit()       # через git rev-parse --short HEAD
+```
+
+**Зачем нужно:**
+- ✅ При восстановлении backup можно проверить совместимость с текущей версией MCP сервера
+- ✅ Если версия MCP SDK изменилась — может потребоваться переиндексация
+- ✅ Git commit позволяет точно определить, какая версия кода использовалась при создании backup
+- ✅ Автоматическое обновление версий при каждом backup (не хардкод!)
+
+**Пример использования при восстановлении:**
+```bash
+# 1. Восстановить backup
+venv\bin\python.exe scripts/qdrant_backup.py restore backups/qdrant/qdrant_backup_20261015_*.json
+
+# 2. Проверить версию MCP сервера в backup
+# (см. метаданные в JSON файле)
+
+# 3. Если версия MCP SDK отличается от текущей — переиндексировать
+venv\bin\python.exe scripts/index_docs.py
+```
 
 ---
 

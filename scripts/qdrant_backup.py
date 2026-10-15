@@ -16,12 +16,65 @@ Backup и восстановление Qdrant коллекции stm32f407_docs
 import json
 import sys
 import requests
+import subprocess
 from pathlib import Path
 from datetime import datetime
 
 QDRANT_URL = "http://localhost:6333"
 COLLECTION = "stm32f407_docs"
 BACKUP_DIR = Path("backups/qdrant")
+MCP_SERVER_DIR = Path("mcp-server")
+
+
+def get_mcp_version():
+    """Получить версию MCP сервера из go.mod"""
+    go_mod = MCP_SERVER_DIR / "go.mod"
+    if not go_mod.exists():
+        return "unknown"
+    
+    content = go_mod.read_text(encoding="utf-8")
+    
+    # Извлечь версию модуля
+    for line in content.split("\n"):
+        if line.startswith("module"):
+            return line.split()[-1] if len(line.split()) > 1 else "unknown"
+    
+    return "unknown"
+
+
+def get_mcp_sdk_version():
+    """Получить версию MCP SDK из go.mod"""
+    go_mod = MCP_SERVER_DIR / "go.mod"
+    if not go_mod.exists():
+        return "unknown"
+    
+    content = go_mod.read_text(encoding="utf-8")
+    
+    # Извлечь версию MCP SDK
+    for line in content.split("\n"):
+        if "modelcontextprotocol/go-sdk" in line and not line.strip().startswith("//"):
+            parts = line.split()
+            if len(parts) >= 2:
+                return parts[-1]
+    
+    return "unknown"
+
+
+def get_git_commit():
+    """Получить текущий git commit hash"""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=".",
+            timeout=5
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
 
 def backup():
     """Экспорт коллекции в JSON файл"""
@@ -83,20 +136,31 @@ def backup():
     
     # Сохранение в файл
     print(f"\n💾 Saving to {backup_file}...")
+    
+    # Получение версий для метаданных
+    mcp_module = get_mcp_version()
+    mcp_sdk = get_mcp_sdk_version()
+    git_commit = get_git_commit()
+    
     backup_data = {
         "collection": COLLECTION,
         "timestamp": timestamp,
         "points_count": len(all_points),
         "vector_size": info["config"]["params"]["vectors"]["size"],
+        "mcp_server": {
+            "module": mcp_module,
+            "sdk_version": mcp_sdk,
+            "git_commit": git_commit
+        },
         "points": all_points
     }
-    
+
     with open(backup_file, "w", encoding="utf-8") as f:
         json.dump(backup_data, f, indent=2, ensure_ascii=False)
-    
+
     file_size_mb = backup_file.stat().st_size / (1024 * 1024)
     print(f"  ✅ Backup created: {backup_file.name} ({file_size_mb:.2f} MB)")
-    
+
     print("\n" + "=" * 60)
     print("✅ Backup completed successfully!")
     print("=" * 60)
@@ -104,6 +168,10 @@ def backup():
     print(f"  Points: {len(all_points)}")
     print(f"  File: {backup_file}")
     print(f"  Size: {file_size_mb:.2f} MB")
+    print(f"\n🔧 MCP Server versions:")
+    print(f"  Module: {mcp_module}")
+    print(f"  SDK: {mcp_sdk}")
+    print(f"  Git commit: {git_commit}")
     
     return True
 
@@ -209,22 +277,29 @@ def list_backups():
         # Загрузка метаданных
         with open(backup, "r", encoding="utf-8") as f:
             data = json.load(f)
-        
+
         timestamp = data.get("timestamp", "unknown")
         points_count = data.get("points_count", 0)
         file_size_mb = backup.stat().st_size / (1024 * 1024)
         
+        # MCP Server версии (если есть)
+        mcp_info = data.get("mcp_server", {})
+        mcp_sdk = mcp_info.get("sdk_version", "N/A")
+        git_commit = mcp_info.get("git_commit", "N/A")
+
         # Форматирование даты
         try:
             dt = datetime.strptime(timestamp, "%Y%m%d_%H%M%S")
             date_str = dt.strftime("%Y-%m-%d %H:%M:%S")
         except:
             date_str = timestamp
-        
+
         print(f"  📦 {backup.name}")
         print(f"     Date: {date_str}")
         print(f"     Points: {points_count}")
         print(f"     Size: {file_size_mb:.2f} MB")
+        print(f"     MCP SDK: {mcp_sdk}")
+        print(f"     Git commit: {git_commit}")
         print()
 
 
