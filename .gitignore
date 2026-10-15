@@ -1,3 +1,7 @@
+# Go build artifacts
+mcp-server/mcp-server.exe
+mcp-server/*.exe
+
 # Docker
 data/
 *.log
