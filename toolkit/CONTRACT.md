@@ -294,7 +294,7 @@ peripheral/registers/tags/not_on_f407`; база знаний — `kb/stm32f4xx/
 `toolkit --version` (аргументы CLI, не stdin):
 
 ```
-toolkit 1.0.0 (contract 1.0)
+toolkit 1.1.0 (contract 1.0)
 ```
 
 `contract 1.0` — версия настоящего контракта. Go ToolkitClient (Ф1-6) парсит `contract N.M`

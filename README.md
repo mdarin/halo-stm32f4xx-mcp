@@ -36,6 +36,8 @@ OLLAMA_URL=http://127.0.0.1:11434 \
 | `QDRANT_COLLECTION` | Коллекция с документацией | `stm32f407_docs` |
 | `OLLAMA_URL` | Ollama для эмбеддингов | `http://127.0.0.1:11434` |
 | `EMBED_MODEL` | Модель эмбеддингов | `nomic-embed-text` |
+| `CONTEXT_COLLECTION` | Коллекция контекста агента (Фаза 5) | `stm32_project_context` |
+| `DISABLE_CONTEXT_LOG` | `1` — отключить авто-лог модификаций `cubemx_insert_code` | авто-лог включён |
 
 Toolkit при запуске читает те же `QDRANT_URL`/`QDRANT_API_KEY`/`OLLAMA_URL`
 (см. `toolkit/CONTRACT.md` §5). Контракт toolkit↔сервер: `toolkit/CONTRACT.md`.
@@ -50,7 +52,27 @@ Toolkit при запуске читает те же `QDRANT_URL`/`QDRANT_API_KE
 — AST-анализ C-кода (функции, переменные, HAL-вызовы, атрибуты, точные
 byte/line-позиции); `advanced_lint` — правила F407 (DMA-буфер в CCMRAM и др.,
 опционально flow-анализ); `generate_doc_comments` — Doxygen-комментарии для
-функций без документации.
+функций без документации; `project_context_load` / `project_context_save` /
+`project_context_search` — контекстная память агента (Фаза 5).
+
+## Контекстная память агента
+
+Отдельная коллекция Qdrant `stm32_project_context` (env `CONTEXT_COLLECTION`):
+сводка проекта, предпочтения пользователя, история модификаций. Помогает агенту
+на новом сеансе вспомнить, какая периферия уже настроена и что он менял.
+
+- `project_context_save` — сохранить запись (key, text, периферия/IRQ/prefs);
+  повторная запись того же key перезаписывает точку (детерминированный id).
+- `project_context_load` — полный контекст проекта или одна запись; модификации
+  отсортированы по времени.
+- `project_context_search` — семантический поиск по контексту проекта.
+- Авто-лог: каждый успешный `cubemx_insert_code` пишет запись
+  `doc_type=modification` (file, block, mode, bytes, timestamp); отключается
+  env `DISABLE_CONTEXT_LOG=1`.
+- Офлайн-сбор: `toolkit ctx-extract --project <dir>` — периферия из `*.ioc`
+  (`Mcu.IP*`), IRQ-обработчики (tree-sitter AST), USER CODE блоки.
+
+Подробный контракт — `toolkit/CONTRACT.md` §10, CLI — `CLI.md` (ctx-*).
 
 Пополнение базы знаний из Rust-стороны: `toolkit rag-index --path kb`
 (по manifest.json, детерминированные id — совместимо с `scripts/index_docs.py`)

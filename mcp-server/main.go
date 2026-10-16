@@ -18,7 +18,7 @@ import (
 
 // ServerVersion — semver MCP-сервера (single source of truth).
 // MINOR — добавление/изменение инструментов, PATCH — исправления.
-const ServerVersion = "0.6.0"
+const ServerVersion = "0.7.0"
 
 // QueryDocsInput — входные параметры для query_hardware_docs
 type QueryDocsInput struct {
