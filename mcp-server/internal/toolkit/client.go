@@ -261,13 +261,62 @@ func ragArgs(opts RagSearchOptions) []string {
 	return args
 }
 
+// RagTimeout — таймаут RAG-операций (эмбеддинг + Qdrant search), дольше DefaultTimeout.
+const RagTimeout = 30 * time.Second
+
+// DocHit — хит поиска по документации (CONTRACT.md §6).
+type DocHit struct {
+	Text       string  `json:"text"`
+	Source     string  `json:"source"`
+	Peripheral string  `json:"peripheral"`
+	Chapter    int     `json:"chapter"`
+	Section    string  `json:"section"`
+	Title      string  `json:"title"`
+	Score      float64 `json:"score"`
+}
+
+// RagQueryResponse — ответ rag-query (CONTRACT.md §6).
+type RagQueryResponse struct {
+	SchemaVersion int      `json:"schema_version"`
+	Command       string   `json:"command"`
+	Query         string   `json:"query"`
+	Peripheral    string   `json:"peripheral"`
+	Results       []DocHit `json:"results"`
+}
+
+// RagQueryOptions — опции rag-query.
+type RagQueryOptions struct {
+	Peripheral string
+	Limit      int
+}
+
+// RagQuery вызывает `toolkit rag-query` — поиск по документации без AST.
+func (c *Client) RagQuery(ctx context.Context, query string, opts RagQueryOptions) (*RagQueryResponse, error) {
+	var args []string
+	args = append(args, "--query", query)
+	if opts.Peripheral != "" {
+		args = append(args, "--peripheral", opts.Peripheral)
+	}
+	args = append(args, "--limit", fmt.Sprint(max(opts.Limit, 1)))
+
+	var resp RagQueryResponse
+	if err := c.callArgsTimeout(ctx, "rag-query", "", &resp, args, RagTimeout); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // call — общий вызов: code в stdin, JSON-ответ из stdout, JSON-ошибка из stderr.
 func (c *Client) call(ctx context.Context, command, code string, out any) error {
 	return c.callArgs(ctx, command, code, out, nil)
 }
 
 func (c *Client) callArgs(ctx context.Context, command, code string, out any, extraArgs []string) error {
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	return c.callArgsTimeout(ctx, command, code, out, extraArgs, c.timeout)
+}
+
+func (c *Client) callArgsTimeout(ctx context.Context, command, code string, out any, extraArgs []string, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	args := append([]string{command}, extraArgs...)
@@ -281,7 +330,7 @@ func (c *Client) callArgs(ctx context.Context, command, code string, out any, ex
 	err := cmd.Run()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("toolkit %s timed out after %s", command, c.timeout)
+			return fmt.Errorf("toolkit %s timed out after %s", command, timeout)
 		}
 		return humanError(command, err, stderr.String())
 	}

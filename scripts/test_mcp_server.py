@@ -159,6 +159,9 @@ def test_query_with_filter(proc):
         return False
 
 def main():
+    # query_hardware_docs работает через toolkit (Ф2-1) — нужен TOOLKIT_PATH
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.environ.setdefault("TOOLKIT_PATH", os.path.join(root, "toolkit", "target", "release", "toolkit"))
     print("=" * 60)
     print("🧪 MCP Server STDIO Test")
     print("=" * 60)

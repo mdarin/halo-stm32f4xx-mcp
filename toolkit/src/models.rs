@@ -153,6 +153,48 @@ pub struct RagResponse {
     pub rag_degraded: bool,
 }
 
+/// Хит поиска по документации (CONTRACT.md §6). Поля зеркалят payload точек
+/// Qdrant: source берётся из source_file, chapter — число.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocHit {
+    pub text: String,
+    pub source: String,
+    pub peripheral: String,
+    pub chapter: i64,
+    pub section: String,
+    pub title: String,
+    pub score: f64,
+}
+
+/// Ответ rag-query (CONTRACT.md §6) — поиск по документации без AST.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RagQueryResponse {
+    pub schema_version: u32,
+    pub command: String,
+    pub query: String,
+    pub peripheral: String,
+    pub results: Vec<DocHit>,
+}
+
+/// Ответ rag-upsert (CONTRACT.md §7).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RagUpsertResponse {
+    pub schema_version: u32,
+    pub command: String,
+    pub upserted: usize,
+}
+
+/// Ответ rag-index (CONTRACT.md §7).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RagIndexResponse {
+    pub schema_version: u32,
+    pub command: String,
+    pub files: usize,
+    pub chunks: usize,
+    pub skipped: usize,
+    pub errors: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Response {
@@ -161,6 +203,9 @@ pub enum Response {
     FlowAnalysis(LintResponse),
     GenerateDocs(DocsResponse),
     RagSearch(RagResponse),
+    RagQuery(RagQueryResponse),
+    RagUpsert(RagUpsertResponse),
+    RagIndex(RagIndexResponse),
 }
 
 #[allow(dead_code)]

@@ -7,7 +7,10 @@ pub mod analyze;
 pub mod flow_analysis;
 pub mod generate_docs;
 pub mod lint;
+pub mod rag_index;
+pub mod rag_query;
 pub mod rag_search;
+pub mod rag_upsert;
 
 #[allow(dead_code)]
 pub const CONTRACT_VERSION: &str = "1.0";
@@ -26,6 +29,9 @@ pub fn registry() -> Vec<Box<dyn Command>> {
         Box::new(flow_analysis::FlowAnalysis),
         Box::new(generate_docs::GenerateDocs),
         Box::new(rag_search::RagSearch),
+        Box::new(rag_query::RagQuery),
+        Box::new(rag_upsert::RagUpsert),
+        Box::new(rag_index::RagIndex),
     ]
 }
 
@@ -93,6 +99,19 @@ pub fn code_from(matches: &clap::ArgMatches, command: &str) -> Result<String, To
         matches.get_one::<String>("file").map(|s| s.as_str()),
         command,
     )
+}
+
+/// Чтение всего stdin (для rag-upsert и других stdin-JSON команд).
+pub fn read_stdin(command: &str) -> Result<String, ToolkitError> {
+    let mut buf = String::new();
+    std::io::stdin().read_to_string(&mut buf).map_err(|e| {
+        ToolkitError::new(
+            crate::models::ErrorCode::InputRead,
+            format!("failed to read stdin: {e}"),
+            command,
+        )
+    })?;
+    Ok(buf)
 }
 
 fn file_flag() -> Arg {

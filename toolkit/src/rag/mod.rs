@@ -85,6 +85,234 @@ fn fetch_refs(cfg: &Config, query: &str, limit: usize) -> Result<Vec<RagRef>, St
         .collect())
 }
 
+// ============================================================================
+// rag-query / rag-upsert / rag-index (CONTRACT.md §6–7, Ф2-1)
+// ============================================================================
+
+/// Точка для upsert: детерминированный id, текст для эмбеддинга, payload.
+#[derive(Debug, Clone)]
+pub struct UpsertPoint {
+    pub id: i64,
+    pub text: String,
+    pub payload: serde_json::Value,
+}
+
+/// Поиск по документации: embed(query) → Qdrant search (+фильтр peripheral).
+pub fn query(
+    text: &str,
+    peripheral: &str,
+    limit: usize,
+    cfg: &Config,
+) -> Result<Vec<crate::models::DocHit>, String> {
+    let vector = ollama::embed(cfg, text)?;
+    let filter = if peripheral.trim().is_empty() {
+        None
+    } else {
+        Some(qdrant::peripheral_filter(peripheral))
+    };
+    let hits = qdrant::search(cfg, &vector, limit, filter.as_ref())?;
+    Ok(hits.into_iter().map(hit_to_doc).collect())
+}
+
+fn hit_to_doc(hit: qdrant::Hit) -> crate::models::DocHit {
+    let p = hit.payload;
+    crate::models::DocHit {
+        text: p.get("text").and_then(|v| v.as_str()).unwrap_or_default().into(),
+        source: p
+            .get("source_file")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .into(),
+        peripheral: p
+            .get("peripheral")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .into(),
+        chapter: p.get("chapter").and_then(|v| v.as_i64()).unwrap_or(0),
+        section: p
+            .get("section")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .into(),
+        title: p
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .into(),
+        score: hit.score,
+    }
+}
+
+/// Детерминированный id точки — parity с scripts/index_docs.py:
+/// первые 8 hex-символов SHA-256 от "{file}:{chunk_idx}".
+pub fn deterministic_id(file: &str, chunk_idx: usize) -> i64 {
+    use sha2::{Digest, Sha256};
+    let input = format!("{file}:{chunk_idx}");
+    let digest = Sha256::digest(input.as_bytes());
+    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        [..8]
+        .to_string();
+    i64::from(u32::from_str_radix(&hex, 16).unwrap_or(0))
+}
+
+/// Upsert точек: текст каждой точки эмбеддится, точки грузятся батчами по 100.
+pub fn upsert_points(
+    points: Vec<UpsertPoint>,
+    cfg: &Config,
+) -> Result<usize, String> {
+    const BATCH: usize = 100;
+    let mut qdrant_points = Vec::with_capacity(points.len());
+    for point in &points {
+        let vector = ollama::embed(cfg, &point.text)?;
+        let mut payload = point.payload.clone();
+        if !payload.is_object() {
+            payload = serde_json::json!({});
+        }
+        payload["text"] = serde_json::Value::String(point.text.clone());
+        qdrant_points.push(serde_json::json!({
+            "id": point.id,
+            "vector": vector,
+            "payload": payload,
+        }));
+        if qdrant_points.len() == BATCH {
+            qdrant::upsert(cfg, &qdrant_points)?;
+            qdrant_points.clear();
+        }
+    }
+    qdrant::upsert(cfg, &qdrant_points)?;
+    Ok(points.len())
+}
+
+/// Статистика индексации (CONTRACT.md §7).
+#[derive(Debug, Default, Clone)]
+pub struct IndexStats {
+    pub files: usize,
+    pub chunks: usize,
+    pub skipped: usize,
+    pub errors: usize,
+}
+
+const LARGE_FILE_CHARS: usize = 30_000;
+const MIN_CHUNK_CHARS: usize = 50;
+
+/// Индексация kb-каталога по manifest.json (parity со scripts/index_docs.py):
+/// маленькие файлы — одна точка, большие (>30000) — чанки по заголовкам "### ".
+/// Id детерминированные (deterministic_id), повторный запуск перезаписывает точки.
+pub fn index_kb(dir: &std::path::Path, cfg: &Config) -> Result<IndexStats, String> {
+    let manifest_path = dir.join("manifest.json");
+    let manifest_raw = std::fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("failed to read {}: {e}", manifest_path.display()))?;
+    let manifest: serde_json::Value =
+        serde_json::from_str(&manifest_raw).map_err(|e| format!("manifest.json: {e}"))?;
+    let files = manifest
+        .get("files")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "manifest.json: missing files array".to_string())?;
+
+    let mut stats = IndexStats::default();
+    for entry in files {
+        if entry.get("not_on_f407").and_then(|v| v.as_bool()).unwrap_or(false) {
+            stats.skipped += 1;
+            continue;
+        }
+        let file_name = match entry.get("file").and_then(|v| v.as_str()) {
+            Some(f) => f.to_string(),
+            None => {
+                stats.errors += 1;
+                continue;
+            }
+        };
+        let content = match std::fs::read_to_string(dir.join(&file_name)) {
+            Ok(c) => c,
+            Err(_) => {
+                stats.errors += 1;
+                continue;
+            }
+        };
+        if content.trim().chars().count() < MIN_CHUNK_CHARS {
+            stats.skipped += 1;
+            continue;
+        }
+
+        let title = entry
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let metadata = serde_json::json!({
+            "source_file": file_name,
+            "chapter": entry.get("chapter"),
+            "section": entry.get("section"),
+            "title": entry.get("title"),
+            "peripheral": entry.get("peripheral"),
+            "registers": entry.get("registers").cloned().unwrap_or(serde_json::json!([])),
+            "tags": entry.get("tags").cloned().unwrap_or(serde_json::json!([])),
+            "not_on_f407": false,
+            "schema_version": 1,
+        });
+
+        let mut points = Vec::new();
+        if content.chars().count() > LARGE_FILE_CHARS {
+            for (i, (header, chunk)) in chunk_by_headers(&content).into_iter().enumerate() {
+                if chunk.trim().chars().count() < MIN_CHUNK_CHARS {
+                    continue;
+                }
+                let full_text = format!("{title}\n{header}\n{chunk}");
+                let mut payload = metadata.clone();
+                payload["chunk_id"] = serde_json::json!(i);
+                payload["chunk_header"] = serde_json::json!(header);
+                points.push(UpsertPoint {
+                    id: deterministic_id(&file_name, i),
+                    text: full_text,
+                    payload,
+                });
+            }
+        } else {
+            let mut payload = metadata.clone();
+            payload["chunk_id"] = serde_json::json!(0);
+            points.push(UpsertPoint {
+                id: deterministic_id(&file_name, 0),
+                text: content.clone(),
+                payload,
+            });
+        }
+
+        let count = points.len();
+        match upsert_points(points, cfg) {
+            Ok(_) => {
+                stats.files += 1;
+                stats.chunks += count;
+            }
+            Err(_) => {
+                stats.errors += 1;
+            }
+        }
+    }
+    Ok(stats)
+}
+
+/// Чанкинг по заголовкам "### " (parity с chunk_by_headers в index_docs.py).
+fn chunk_by_headers(content: &str) -> Vec<(String, String)> {
+    let mut chunks = Vec::new();
+    let mut current: Vec<&str> = Vec::new();
+    let mut header = String::new();
+
+    for line in content.lines() {
+        if line.starts_with("### ") {
+            if !current.is_empty() {
+                chunks.push((header.clone(), current.join("\n")));
+            }
+            header = line.to_string();
+            current = vec![line];
+        } else {
+            current.push(line);
+        }
+    }
+    if !current.is_empty() {
+        chunks.push((header, current.join("\n")));
+    }
+    chunks
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -4,8 +4,8 @@ MCP-сервер для STM32F407-разработки: поиск по доку
 анализ DMA/CCM-RAM практик и CubeMX-инструменты. Состоит из двух компонентов:
 
 - **`mcp-server/`** — Go MCP-сервер (STDIO), 9 инструментов
-- **`toolkit/`** — Rust CLI (tree-sitter AST, lint F407, doc-gen, rag-search),
-  подключается сервером через `exec.Command`
+- **`toolkit/`** — Rust CLI (tree-sitter AST, lint F407, doc-gen, rag-query/search/upsert/index)
+  — единственный владелец RAG-доступа; подключается сервером через `exec.Command`
 
 ## Сборка
 
@@ -30,8 +30,8 @@ OLLAMA_URL=http://127.0.0.1:11434 \
 
 | Переменная | Назначение | По умолчанию |
 |---|---|---|
-| `TOOLKIT_PATH` | Путь к бинарнику Rust toolkit; без него 3 advanced-инструмента не регистрируются | — |
-| `QDRANT_URL` | Qdrant для `query_hardware_docs` | `http://127.0.0.1:6333` |
+| `TOOLKIT_PATH` | Путь к бинарнику Rust toolkit; без него 4 toolkit-инструмента (включая `query_hardware_docs`) не регистрируются | — |
+| `QDRANT_URL` | Qdrant (читает toolkit; Go-сервер RAG-доступа не имеет с Ф2-1) | `http://127.0.0.1:6333` |
 | `QDRANT_API_KEY` | API-ключ Qdrant (если настроен) | — |
 | `QDRANT_COLLECTION` | Коллекция с документацией | `stm32f407_docs` |
 | `OLLAMA_URL` | Ollama для эмбеддингов | `http://127.0.0.1:11434` |
@@ -42,15 +42,19 @@ Toolkit при запуске читает те же `QDRANT_URL`/`QDRANT_API_KE
 
 ## Инструменты MCP
 
-Базовые (чистый Go): `query_hardware_docs`, `check_f407_rules`,
-`cubemx_read_user_blocks`, `cubemx_insert_code`, `cubemx_find_weak_overrides`,
-`cubemx_validate_project`.
+Чистый Go: `check_f407_rules`, `cubemx_read_user_blocks`, `cubemx_insert_code`,
+`cubemx_find_weak_overrides`, `cubemx_validate_project`.
 
-Advanced (через Rust toolkit, `TOOLKIT_PATH` обязателен):
-`ast_analyze_code` — AST-анализ C-кода (функции, переменные, HAL-вызовы,
-атрибуты, точные byte/line-позиции); `advanced_lint` — правила F407
-(DMA-буфер в CCMRAM и др., опционально flow-анализ); `generate_doc_comments` —
-Doxygen-комментарии для функций без документации.
+Через Rust toolkit (`TOOLKIT_PATH` обязателен):
+`query_hardware_docs` — поиск по документации (`rag-query`); `ast_analyze_code`
+— AST-анализ C-кода (функции, переменные, HAL-вызовы, атрибуты, точные
+byte/line-позиции); `advanced_lint` — правила F407 (DMA-буфер в CCMRAM и др.,
+опционально flow-анализ); `generate_doc_comments` — Doxygen-комментарии для
+функций без документации.
+
+Пополнение базы знаний из Rust-стороны: `toolkit rag-index --path kb`
+(по manifest.json, детерминированные id — совместимо с `scripts/index_docs.py`)
+или низкоуровневый `toolkit rag-upsert` (точки по stdin).
 
 ## Индексация документации
 

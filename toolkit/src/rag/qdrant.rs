@@ -56,6 +56,37 @@ pub fn search(
     Ok(parsed.result)
 }
 
+/// Upsert точек (id, vector, payload) в коллекцию (CONTRACT.md §7).
+/// points — готовые JSON-объекты Qdrant.
+pub fn upsert(cfg: &Config, points: &[serde_json::Value]) -> Result<(), String> {
+    if points.is_empty() {
+        return Ok(());
+    }
+    let agent: ureq::Agent = ureq::AgentBuilder::new().timeout(REQUEST_TIMEOUT).build();
+
+    let body = serde_json::json!({ "points": points });
+
+    let mut request = agent
+        .put(&format!(
+            "{}/collections/{}/points",
+            cfg.qdrant_url.trim_end_matches('/'),
+            cfg.collection
+        ))
+        .set("Content-Type", "application/json");
+    if let Some(key) = &cfg.qdrant_api_key {
+        request = request.set("api-key", key);
+    }
+
+    let response = request
+        .send_json(&body)
+        .map_err(|e| format!("qdrant upsert failed: {e}"))?;
+
+    if response.status() != 200 {
+        return Err(format!("qdrant upsert returned status {}", response.status()));
+    }
+    Ok(())
+}
+
 #[allow(dead_code)]
 pub fn peripheral_filter(peripheral: &str) -> serde_json::Value {
     serde_json::json!({

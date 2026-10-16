@@ -10,9 +10,6 @@ import (
 
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/config"
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/cubemx"
-	"github.com/mdari/halo-f407-mcp/mcp-server/internal/rag/embedder"
-	"github.com/mdari/halo-f407-mcp/mcp-server/internal/rag/qdrant"
-	"github.com/mdari/halo-f407-mcp/mcp-server/internal/rag/searcher"
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/toolkit"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -24,12 +21,12 @@ type QueryDocsInput struct {
 	Limit      int    `json:"limit,omitempty" jsonschema:"optional maximum number of results (default: 5)"`
 }
 
-// QueryDocsOutput — результат поиска
+// QueryDocsOutput — результат поиска (через toolkit rag-query, Ф2-1)
 type QueryDocsOutput struct {
-	Query      string                  `json:"query"`
-	Peripheral string                  `json:"peripheral,omitempty"`
-	Count      int                     `json:"count"`
-	Results    []searcher.SearchResult `json:"results"`
+	Query      string           `json:"query"`
+	Peripheral string           `json:"peripheral,omitempty"`
+	Count      int              `json:"count"`
+	Results    []toolkit.DocHit `json:"results"`
 }
 
 // CheckF407RulesInput — входные параметры для check_f407_rules
@@ -119,10 +116,9 @@ func queryDocsHandler(ctx context.Context, req *mcp.CallToolRequest, input Query
 	QueryDocsOutput,
 	error,
 ) {
-	// Получение searcher из контекста (или глобальная переменная)
-	// Временно используем глобальную переменную
-	if globalSearcher == nil {
-		return nil, QueryDocsOutput{}, fmt.Errorf("searcher not initialized")
+	// Поиск через Rust toolkit (Ф2-1: toolkit — единственный владелец RAG-доступа)
+	if globalToolkit == nil {
+		return nil, QueryDocsOutput{}, fmt.Errorf("toolkit is not available: set TOOLKIT_PATH to the toolkit binary (required for query_hardware_docs)")
 	}
 
 	// Установка лимита по умолчанию
@@ -131,10 +127,14 @@ func queryDocsHandler(ctx context.Context, req *mcp.CallToolRequest, input Query
 	}
 
 	// Поиск
-	results, err := globalSearcher.Search(ctx, input.Query, input.Peripheral, input.Limit)
+	resp, err := globalToolkit.RagQuery(ctx, input.Query, toolkit.RagQueryOptions{
+		Peripheral: input.Peripheral,
+		Limit:      input.Limit,
+	})
 	if err != nil {
 		return nil, QueryDocsOutput{}, fmt.Errorf("search failed: %w", err)
 	}
+	results := resp.Results
 
 	output := QueryDocsOutput{
 		Query:      input.Query,
@@ -391,8 +391,7 @@ func checkFlashROP(code string) *Violation {
 	return nil
 }
 
-// Глобальные переменные для searcher, parser, patcher, finder и validator (будут инициализированы в main)
-var globalSearcher *searcher.Searcher
+// Глобальные переменные для parser, patcher, finder и validator (будут инициализированы в main)
 var globalParser *cubemx.Parser
 var globalPatcher *cubemx.Patcher
 var globalFinder *cubemx.Finder
@@ -405,21 +404,17 @@ func main() {
 	// Логирование в stderr (не мешает STDIO транспорту)
 	log.SetOutput(os.Stderr)
 	log.Printf("Starting STM32F407 MCP Server with official MCP SDK v1.8.0...")
-	log.Printf("Qdrant: %s", cfg.QdrantURL)
-	log.Printf("Ollama: %s", cfg.OllamaURL)
-	log.Printf("Collection: %s", cfg.Collection)
+	log.Printf("Collection: %s (RAG access via toolkit: QDRANT_URL/OLLAMA_URL env)", cfg.Collection)
 
 	// Инициализация компонентов
-	qdrantClient := qdrant.NewClient(cfg.QdrantURL, cfg.QdrantAPIKey)
-	embedderClient := embedder.NewClient(cfg.OllamaURL, cfg.Model)
-	globalSearcher = searcher.NewSearcher(qdrantClient, embedderClient, cfg.Collection)
 	globalParser = cubemx.NewParser()
 	globalPatcher = cubemx.NewPatcher()
 	globalFinder = cubemx.NewFinder()
 	globalValidator = cubemx.NewValidator()
 
-	// Инициализация клиента Rust toolkit (Фаза 1): TOOLKIT_PATH обязателен
-	// для ast_analyze_code / generate_doc_comments / advanced_lint.
+	// Инициализация клиента Rust toolkit: TOOLKIT_PATH обязателен для всех
+	// toolkit-инструментов (Фаза 1: ast_analyze_code, generate_doc_comments,
+	// advanced_lint; Ф2-1: query_hardware_docs через rag-query).
 	if tp := os.Getenv("TOOLKIT_PATH"); tp != "" {
 		tc, err := toolkit.NewClient()
 		if err != nil {
@@ -434,7 +429,7 @@ func main() {
 			}
 		}
 	} else {
-		log.Printf("TOOLKIT_PATH is not set: ast_analyze_code, generate_doc_comments and advanced_lint are disabled")
+		log.Printf("TOOLKIT_PATH is not set: query_hardware_docs, ast_analyze_code, generate_doc_comments and advanced_lint are disabled")
 	}
 
 	// Создание MCP сервера
@@ -444,16 +439,6 @@ func main() {
 			Version: "0.6.0", // Фаза 1: +3 advanced tools через Rust toolkit
 		},
 		nil, // options
-	)
-
-	// Регистрация инструмента query_hardware_docs
-	mcp.AddTool(
-		server,
-		&mcp.Tool{
-			Name:        "query_hardware_docs",
-			Description: "Search STM32F407 hardware documentation (RM0090) for registers, peripherals, clock configuration, etc. Returns relevant documentation chunks with metadata.",
-		},
-		queryDocsHandler,
 	)
 
 	// Регистрация инструмента check_f407_rules
@@ -506,8 +491,16 @@ func main() {
 		validateProjectHandler,
 	)
 
-	// Регистрация advanced-инструментов (Фаза 1, Rust toolkit)
+	// Регистрация toolkit-инструментов (Фаза 1: AST, Ф2-1: RAG-поиск)
 	if globalToolkit != nil {
+		mcp.AddTool(
+			server,
+			&mcp.Tool{
+				Name:        "query_hardware_docs",
+				Description: "Search STM32F407 hardware documentation (RM0090) for registers, peripherals, clock configuration, etc. Returns relevant documentation chunks with metadata.",
+			},
+			queryDocsHandler,
+		)
 		mcp.AddTool(
 			server,
 			&mcp.Tool{
@@ -549,14 +542,14 @@ var globalToolkit *toolkit.Client
 // advancedToolsCount — сколько advanced-инструментов реально зарегистрировано.
 func advancedToolsCount() int {
 	if globalToolkit != nil {
-		return 3
+		return 4
 	}
 	return 0
 }
 
 func advancedToolsLogSuffix() string {
 	if globalToolkit != nil {
-		return ", ast_analyze_code, generate_doc_comments, advanced_lint"
+		return ", query_hardware_docs, ast_analyze_code, generate_doc_comments, advanced_lint"
 	}
 	return ""
 }

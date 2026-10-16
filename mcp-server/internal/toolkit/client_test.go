@@ -138,6 +138,42 @@ fi
 	}
 }
 
+func TestRagQueryArgsAndParsing(t *testing.T) {
+	// Заглушка печатает ответ только если аргументы совпали с ожидаемыми:
+	// rag-query --query Q --peripheral TIM --limit 3
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ragqstub.sh")
+	script := `#!/bin/sh
+if [ "$1" = "rag-query" ] && [ "$2" = "--query" ] && [ "$3" = "timer capture" ] && [ "$4" = "--peripheral" ] && [ "$5" = "TIM" ] && [ "$6" = "--limit" ] && [ "$7" = "3" ]; then
+  printf '%s\n' '{"schema_version":1,"command":"rag-query","query":"timer capture","peripheral":"TIM","results":[{"text":"TIM docs","source":"17_x.md","peripheral":"TIM","chapter":17,"section":"17.4","title":"TIM DMA","score":0.61}]}'
+else
+  printf '%s\n' '{"error":{"code":"E_RAG_UNAVAILABLE","message":"qdrant down","command":"rag-query"}}' 1>&2
+  exit 2
+fi
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := NewClientWithPath(path, 5*time.Second)
+
+	resp, err := c.RagQuery(context.Background(), "timer capture", RagQueryOptions{Peripheral: "TIM", Limit: 3})
+	if err != nil {
+		t.Fatalf("RagQuery: %v", err)
+	}
+	if resp.Command != "rag-query" || len(resp.Results) != 1 {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+	hit := resp.Results[0]
+	if hit.Source != "17_x.md" || hit.Chapter != 17 || hit.Score != 0.61 {
+		t.Fatalf("unexpected hit: %+v", hit)
+	}
+
+	// Ошибка RAG пробрасывается человекочитаемо.
+	if _, err := c.RagQuery(context.Background(), "x", RagQueryOptions{}); err == nil || !strings.Contains(err.Error(), "E_RAG_UNAVAILABLE") {
+		t.Fatalf("expected E_RAG_UNAVAILABLE, got %v", err)
+	}
+}
+
 func TestNonZeroExitWithJSONError(t *testing.T) {
 	stub := stubScript(t, "", `{"error":{"code":"E_INPUT_READ","message":"failed to read stdin","command":"analyze"}}`, 2)
 	c := NewClientWithPath(stub, 5*time.Second)

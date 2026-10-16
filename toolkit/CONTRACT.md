@@ -221,13 +221,74 @@ AST-анализ + обогащение контекстом из Qdrant (эмб
 | `EMBED_MODEL` | `nomic-embed-text` | Модель эмбеддингов |
 
 Запрос к эмбеддеру: `rule_context`, если задан, иначе первые 2000 символов кода.
-`snippet` — первые 300 символов payload-поля `text`. Схемы запросов совпадают с Go-клиентами
-(`mcp-server/internal/rag/qdrant/client.go`, `embedder/client.go`, `searcher/searcher.go`):
-формат `/api/embed` (`{model, input}` → `{embeddings}`), формат точки поиска
+`snippet` — первые 300 символов payload-поля `text`. Формат `/api/embed`
+(`{model, input}` → `{embeddings}`), формат точки поиска
 (`{vector, limit, with_payload: true, filter?}` → `{result: [{id, score, payload}]}`),
 поля payload: `text`, `source_file`, `peripheral`, `chapter`, `section`, `title`.
+(До Ф2-1 схемы сверялись с Go-клиентами `internal/rag/*`; с Ф2-1 эти клиенты
+удалены — toolkit единственный владелец RAG-доступа.)
 
-## 6. `--version`
+## 6. `rag-query` (Ф2-1)
+
+Поиск по документации без AST-анализа — единственный RAG-канал MCP-инструмента
+`query_hardware_docs`. Аргументы CLI:
+
+```
+toolkit rag-query --query "GPIO MODER register" [--peripheral TIM] [--limit 5]
+```
+
+Ответ (stdout):
+
+```json
+{
+  "schema_version": 1,
+  "command": "rag-query",
+  "query": "GPIO MODER register",
+  "peripheral": "",
+  "results": [
+    {
+      "text": "...",
+      "source": "02_GPIO_registers.md",
+      "peripheral": "GPIO",
+      "chapter": 8,
+      "section": "8.4",
+      "title": "GPIO registers",
+      "score": 0.71
+    }
+  ]
+}
+```
+
+Поля результата зеркалят payload Qdrant: `source` ← `source_file`, `chapter` —
+целое. RAG недоступен → JSON-ошибка `E_RAG_UNAVAILABLE`, exit 1 (в отличие от
+`rag-search`, поиск здесь — основная функция, деградации нет).
+
+## 7. `rag-upsert` / `rag-index` (Ф2-1)
+
+Пополнение базы знаний из Rust-стороны.
+
+`rag-upsert` — низкоуровневая операция, точки приходят по stdin:
+
+```json
+{"points": [{"id": 42, "text": "...", "payload": {"title": "...", ...}}]}
+```
+
+Ответ: `{"schema_version": 1, "command": "rag-upsert", "upserted": 1}`.
+Каждый `text` эмбеддится, в payload принудительно пишется `"text"`;
+upsert батчами по 100 в `PUT /collections/{col}/points`.
+
+`rag-index --path DIR` — индексация каталога kb: читает `manifest.json`
+(схема как в `scripts/index_docs.py`: `files[].file/chapter/section/title/
+peripheral/registers/tags/not_on_f407`), файлы >30000 символов режет по
+заголовкам `### `, id точек детерминированы (первые 8 hex SHA-256 от
+`"{file}:{chunk_idx}"` — parity с python-индексатором), повторный запуск
+перезаписывает точки. Ответ:
+
+```json
+{"schema_version": 1, "command": "rag-index", "files": 433, "chunks": 363, "skipped": 2, "errors": 0}
+```
+
+## 8. `--version`
 
 `toolkit --version` (аргументы CLI, не stdin):
 
@@ -238,7 +299,7 @@ toolkit 0.1.0 (contract 1.0)
 `contract 1.0` — версия настоящего контракта. Go ToolkitClient (Ф1-6) парсит `contract N.M`
 и отказывается работать при несовпадении мажорной версии.
 
-## 7. Совместимость
+## 9. Совместимость
 
 - Мажорная версия контракта растёт при несовместимых изменениях схем.
 - Добавление новых опциональных полей — минорная версия, обратно совместимо.
