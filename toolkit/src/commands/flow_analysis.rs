@@ -23,7 +23,10 @@ impl Command for FlowAnalysis {
 
     fn run(&self, matches: &clap::ArgMatches) -> Result<Response, ToolkitError> {
         let code = super::code_from(matches, self.name())?;
-        let _ = code;
-        Ok(Response::FlowAnalysis(Lint::placeholder(self.name(), true)))
+        Ok(Response::FlowAnalysis(Lint::execute(
+            self.name(),
+            &code,
+            true,
+        )))
     }
 }

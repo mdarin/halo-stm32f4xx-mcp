@@ -1,6 +1,7 @@
 mod analyzer;
 mod commands;
 mod config;
+mod lint;
 mod models;
 
 use std::io::Write;

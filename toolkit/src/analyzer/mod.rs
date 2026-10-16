@@ -17,7 +17,7 @@ pub struct Normalized {
 }
 
 impl Normalized {
-    fn build(source: &str) -> Self {
+    pub(crate) fn build(source: &str) -> Self {
         let bytes = source.as_bytes();
         let is_ident_char = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
         let mut text = String::with_capacity(source.len());
@@ -51,7 +51,7 @@ impl Normalized {
         Self { text, replacements }
     }
 
-    fn mod_to_orig(&self, pos: usize) -> usize {
+    pub(crate) fn mod_to_orig(&self, pos: usize) -> usize {
         let mut delta: i64 = 0;
         for (o_start, o_len, m_len) in &self.replacements {
             let m_start = (*o_start as i64) + delta;
@@ -68,7 +68,7 @@ impl Normalized {
     }
 }
 
-fn line_col_of(source: &str, byte: usize) -> (usize, usize) {
+pub(crate) fn line_col_of(source: &str, byte: usize) -> (usize, usize) {
     let clamped = byte.min(source.len());
     let mut line = 1;
     let mut line_start = 0;
