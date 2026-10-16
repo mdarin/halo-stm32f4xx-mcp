@@ -600,6 +600,31 @@ func main() {
 			},
 			advancedLintHandler,
 		)
+		// Ф5-5: контекстная память агента (CONTRACT.md §10).
+		mcp.AddTool(
+			server,
+			&mcp.Tool{
+				Name:        "project_context_load",
+				Description: "Load stored agent context for a project: peripherals, IRQ handlers, modification history (chronological), user preferences. Use at session start to recall what was already done and preferred. Pass key to load a single entry.",
+			},
+			projectContextLoadHandler,
+		)
+		mcp.AddTool(
+			server,
+			&mcp.Tool{
+				Name:        "project_context_save",
+				Description: "Save an agent context entry for a project (summary, preference, modification note). Deterministic id: re-saving the same key overwrites the entry. Requires Qdrant/Ollama.",
+			},
+			projectContextSaveHandler,
+		)
+		mcp.AddTool(
+			server,
+			&mcp.Tool{
+				Name:        "project_context_search",
+				Description: "Semantic search over stored agent context for a project. Use to recall past decisions/modifications related to a topic, e.g. 'how is PWM configured'.",
+			},
+			projectContextSearchHandler,
+		)
 	}
 
 	log.Printf("Registered tools: query_hardware_docs, check_f407_rules, cubemx_read_user_blocks, cubemx_insert_code, cubemx_find_weak_overrides, cubemx_validate_project%s", advancedToolsLogSuffix())
@@ -617,14 +642,127 @@ var globalToolkit *toolkit.Client
 // advancedToolsCount — сколько advanced-инструментов реально зарегистрировано.
 func advancedToolsCount() int {
 	if globalToolkit != nil {
-		return 4
+		return 7
 	}
 	return 0
 }
 
 func advancedToolsLogSuffix() string {
 	if globalToolkit != nil {
-		return ", query_hardware_docs, ast_analyze_code, generate_doc_comments, advanced_lint"
+		return ", query_hardware_docs, ast_analyze_code, generate_doc_comments, advanced_lint, project_context_load, project_context_save, project_context_search"
 	}
 	return ""
+}
+
+// ProjectContextLoadInput — вход project_context_load (CONTRACT.md §10).
+type ProjectContextLoadInput struct {
+	ProjectPath string `json:"project_path" jsonschema:"absolute path of the project root (with *.ioc)"`
+	Key         string `json:"key,omitempty" jsonschema:"optional single ctx_key to load (e.g. 'summary', 'prefs'); empty = whole project"`
+}
+
+// ProjectContextLoadOutput — ответ project_context_load.
+type ProjectContextLoadOutput struct {
+	ProjectPath string             `json:"project_path"`
+	Count       int                `json:"count"`
+	Entries     []toolkit.CtxEntry `json:"entries"`
+}
+
+// projectContextLoadHandler — Ф5-5: чтение контекста проекта через toolkit ctx-load.
+func projectContextLoadHandler(ctx context.Context, req *mcp.CallToolRequest, input ProjectContextLoadInput) (
+	*mcp.CallToolResult,
+	ProjectContextLoadOutput,
+	error,
+) {
+	if globalToolkit == nil {
+		return nil, ProjectContextLoadOutput{}, fmt.Errorf("toolkit is not available: set TOOLKIT_PATH")
+	}
+	resp, err := globalToolkit.CtxLoad(ctx, input.ProjectPath, input.Key)
+	if err != nil {
+		return nil, ProjectContextLoadOutput{}, fmt.Errorf("project_context_load failed: %w", err)
+	}
+	output := ProjectContextLoadOutput{
+		ProjectPath: resp.ProjectPath,
+		Count:       resp.Count,
+		Entries:     resp.Entries,
+	}
+	if output.Entries == nil {
+		output.Entries = []toolkit.CtxEntry{}
+	}
+	return nil, output, nil
+}
+
+// ProjectContextSaveInput — вход project_context_save (CONTRACT.md §10).
+type ProjectContextSaveInput struct {
+	ProjectPath     string            `json:"project_path" jsonschema:"absolute path of the project root"`
+	Key             string            `json:"key" jsonschema:"logical key; same key overwrites the previous entry ('summary', 'prefs', ...)"`
+	Text            string            `json:"text" jsonschema:"free text stored and embedded for semantic search"`
+	DocType         string            `json:"doc_type,omitempty" jsonschema:"project_context (default) | modification | preference"`
+	Peripherals     []string          `json:"peripherals,omitempty" jsonschema:"peripherals used, e.g. [\"GPIO\",\"TIM3\"]"`
+	Interrupts      []string          `json:"interrupts,omitempty" jsonschema:"IRQ handlers defined, e.g. [\"TIM3_IRQHandler\"]"`
+	UserPreferences map[string]string `json:"user_preferences,omitempty" jsonschema:"user preferences, e.g. {\"style\":\"doxygen\"}"`
+}
+
+// ProjectContextSaveOutput — ответ project_context_save.
+type ProjectContextSaveOutput struct {
+	Saved      int    `json:"saved"`
+	Collection string `json:"collection"`
+}
+
+// projectContextSaveHandler — Ф5-5: сохранение записи контекста через toolkit ctx-save.
+func projectContextSaveHandler(ctx context.Context, req *mcp.CallToolRequest, input ProjectContextSaveInput) (
+	*mcp.CallToolResult,
+	ProjectContextSaveOutput,
+	error,
+) {
+	if globalToolkit == nil {
+		return nil, ProjectContextSaveOutput{}, fmt.Errorf("toolkit is not available: set TOOLKIT_PATH")
+	}
+	resp, err := globalToolkit.CtxSave(ctx, toolkit.CtxSaveInput{
+		ProjectPath: input.ProjectPath,
+		Entries: []toolkit.CtxEntryInput{{
+			Key:             input.Key,
+			DocType:         input.DocType,
+			Text:            input.Text,
+			Peripherals:     input.Peripherals,
+			Interrupts:      input.Interrupts,
+			UserPreferences: input.UserPreferences,
+		}},
+	})
+	if err != nil {
+		return nil, ProjectContextSaveOutput{}, fmt.Errorf("project_context_save failed: %w", err)
+	}
+	return nil, ProjectContextSaveOutput{Saved: resp.Saved, Collection: resp.Collection}, nil
+}
+
+// ProjectContextSearchInput — вход project_context_search (CONTRACT.md §10).
+type ProjectContextSearchInput struct {
+	ProjectPath string `json:"project_path" jsonschema:"absolute path of the project root"`
+	Query       string `json:"query" jsonschema:"semantic search query"`
+	Limit       int    `json:"limit,omitempty" jsonschema:"maximum number of results (default: 5)"`
+}
+
+// ProjectContextSearchOutput — ответ project_context_search.
+type ProjectContextSearchOutput struct {
+	Query   string           `json:"query"`
+	Results []toolkit.CtxHit `json:"results"`
+}
+
+// projectContextSearchHandler — Ф5-5: семантический поиск по контексту через toolkit ctx-search.
+func projectContextSearchHandler(ctx context.Context, req *mcp.CallToolRequest, input ProjectContextSearchInput) (
+	*mcp.CallToolResult,
+	ProjectContextSearchOutput,
+	error,
+) {
+	if globalToolkit == nil {
+		return nil, ProjectContextSearchOutput{}, fmt.Errorf("toolkit is not available: set TOOLKIT_PATH")
+	}
+	resp, err := globalToolkit.CtxSearch(ctx, input.ProjectPath, input.Query, input.Limit)
+	if err != nil {
+		return nil, ProjectContextSearchOutput{}, fmt.Errorf("project_context_search failed: %w", err)
+	}
+	results := resp.Results
+	if results == nil {
+		results = []toolkit.CtxHit{}
+	}
+	return nil, ProjectContextSearchOutput{Query: resp.Query, Results: results}, nil
 }

@@ -353,6 +353,88 @@ func (c *Client) CtxSave(ctx context.Context, in CtxSaveInput) (*CtxSaveResponse
 	return &resp, nil
 }
 
+// CtxEntry — запись контекста в ответе ctx-load (CONTRACT.md §10).
+type CtxEntry struct {
+	CtxKey          string            `json:"ctx_key"`
+	DocType         string            `json:"doc_type"`
+	Text            string            `json:"text"`
+	Peripherals     []string          `json:"peripherals"`
+	Interrupts      []string          `json:"interrupts"`
+	UserPreferences map[string]string `json:"user_preferences"`
+	Modification    *CtxModification  `json:"modification"`
+	Timestamp       *int64            `json:"timestamp"`
+}
+
+// CtxLoadResponse — ответ ctx-load (CONTRACT.md §10).
+type CtxLoadResponse struct {
+	SchemaVersion int        `json:"schema_version"`
+	Command       string     `json:"command"`
+	ProjectPath   string     `json:"project_path"`
+	Count         int        `json:"count"`
+	Entries       []CtxEntry `json:"entries"`
+}
+
+// CtxLoad вызывает `toolkit ctx-load` — чтение контекста проекта
+// (весь проект или одна запись по key).
+func (c *Client) CtxLoad(ctx context.Context, project, key string) (*CtxLoadResponse, error) {
+	var args []string
+	args = append(args, "--project", project)
+	if key != "" {
+		args = append(args, "--key", key)
+	}
+	var resp CtxLoadResponse
+	if err := c.callArgsTimeout(ctx, "ctx-load", "", &resp, args, RagTimeout); err != nil {
+		return nil, err
+	}
+	// toolkit опускает пустые поля (skip_serializing_if) → JSON null;
+	// нормализуем, чтобы MCP output-схема (type: object/array) валидировалась.
+	for i := range resp.Entries {
+		e := &resp.Entries[i]
+		if e.UserPreferences == nil {
+			e.UserPreferences = map[string]string{}
+		}
+		if e.Peripherals == nil {
+			e.Peripherals = []string{}
+		}
+		if e.Interrupts == nil {
+			e.Interrupts = []string{}
+		}
+	}
+	return &resp, nil
+}
+
+// CtxHit — хит ctx-search (CONTRACT.md §10).
+type CtxHit struct {
+	Score       float64 `json:"score"`
+	ProjectPath string  `json:"project_path"`
+	CtxKey      string  `json:"ctx_key"`
+	DocType     string  `json:"doc_type"`
+	Text        string  `json:"text"`
+}
+
+// CtxSearchResponse — ответ ctx-search (CONTRACT.md §10).
+type CtxSearchResponse struct {
+	SchemaVersion int      `json:"schema_version"`
+	Command       string   `json:"command"`
+	ProjectPath   string   `json:"project_path"`
+	Query         string   `json:"query"`
+	Results       []CtxHit `json:"results"`
+}
+
+// CtxSearch вызывает `toolkit ctx-search` — семантический поиск
+// по контексту проекта.
+func (c *Client) CtxSearch(ctx context.Context, project, query string, limit int) (*CtxSearchResponse, error) {
+	args := []string{"--project", project, "--query", query, "--limit", fmt.Sprint(max(limit, 1))}
+	var resp CtxSearchResponse
+	if err := c.callArgsTimeout(ctx, "ctx-search", "", &resp, args, RagTimeout); err != nil {
+		return nil, err
+	}
+	if resp.Results == nil {
+		resp.Results = []CtxHit{}
+	}
+	return &resp, nil
+}
+
 // call — общий вызов: code в stdin, JSON-ответ из stdout, JSON-ошибка из stderr.
 func (c *Client) call(ctx context.Context, command, code string, out any) error {
 	return c.callArgs(ctx, command, code, out, nil)
