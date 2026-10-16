@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/config"
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/cubemx"
@@ -234,7 +236,76 @@ func insertCodeHandler(ctx context.Context, req *mcp.CallToolRequest, input Inse
 		Message:      result.Message,
 	}
 
+	// Ф5-4: best-effort авто-лог модификации в контекст проекта.
+	logModification(input, result)
+
 	return nil, output, nil
+}
+
+// contextLogDisabled — env-флаг отключения авто-лога (по умолчанию включён).
+func contextLogDisabled() bool {
+	switch strings.ToLower(os.Getenv("DISABLE_CONTEXT_LOG")) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// findProjectRoot — ближайший каталог с *.ioc вверх по дереву от файла;
+// если не найден — каталог самого файла.
+func findProjectRoot(filePath string) string {
+	dir := filepath.Dir(filePath)
+	for current := dir; ; {
+		entries, err := os.ReadDir(current)
+		if err == nil {
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".ioc") {
+					return current
+				}
+			}
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return dir
+}
+
+// logModification — Ф5-4: запись modification (doc_type=modification,
+// key=mod:<file>:<block>:<ts>) через toolkit ctx-save. Best-effort:
+// фоновый контекст, ошибки только в лог, ответ insert не блокируется.
+func logModification(input InsertCodeInput, result *cubemx.InsertResult) {
+	if globalToolkit == nil || contextLogDisabled() {
+		return
+	}
+	go func() {
+		bg, cancel := context.WithTimeout(context.Background(), toolkit.RagTimeout)
+		defer cancel()
+		root := findProjectRoot(result.FilePath)
+		ts := time.Now().Unix()
+		key := fmt.Sprintf("mod:%s:%s:%d", filepath.Base(result.FilePath), result.BlockName, ts)
+		_, err := globalToolkit.CtxSave(bg, toolkit.CtxSaveInput{
+			ProjectPath: root,
+			Entries: []toolkit.CtxEntryInput{{
+				Key:     key,
+				DocType: "modification",
+				Text: fmt.Sprintf("Modified %s block %q (mode=%s, bytes=%d) at %d",
+					filepath.Base(result.FilePath), result.BlockName, result.Mode, result.BytesWritten, ts),
+				Modification: &toolkit.CtxModification{
+					File:      result.FilePath,
+					Block:     result.BlockName,
+					Mode:      result.Mode,
+					Bytes:     result.BytesWritten,
+					Timestamp: ts,
+				},
+			}},
+		})
+		if err != nil {
+			log.Printf("context modification log failed (non-fatal): %v", err)
+		}
+	}()
 }
 
 // findWeakOverridesHandler — обработчик инструмента cubemx_find_weak_overrides

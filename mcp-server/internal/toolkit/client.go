@@ -306,6 +306,53 @@ func (c *Client) RagQuery(ctx context.Context, query string, opts RagQueryOption
 	return &resp, nil
 }
 
+// CtxModification — запись об изменении кода (CONTRACT.md §10).
+type CtxModification struct {
+	File      string `json:"file"`
+	Block     string `json:"block"`
+	Mode      string `json:"mode"`
+	Bytes     int    `json:"bytes"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+// CtxEntryInput — запись ctx-save (CONTRACT.md §10).
+type CtxEntryInput struct {
+	Key             string            `json:"key"`
+	DocType         string            `json:"doc_type,omitempty"`
+	Text            string            `json:"text"`
+	Peripherals     []string          `json:"peripherals,omitempty"`
+	Interrupts      []string          `json:"interrupts,omitempty"`
+	UserPreferences map[string]string `json:"user_preferences,omitempty"`
+	Modification    *CtxModification  `json:"modification,omitempty"`
+}
+
+// CtxSaveInput — вход ctx-save (stdin JSON, CONTRACT.md §10).
+type CtxSaveInput struct {
+	ProjectPath string          `json:"project_path"`
+	Entries     []CtxEntryInput `json:"entries"`
+}
+
+// CtxSaveResponse — ответ ctx-save (CONTRACT.md §10).
+type CtxSaveResponse struct {
+	SchemaVersion int    `json:"schema_version"`
+	Command       string `json:"command"`
+	Saved         int    `json:"saved"`
+	Collection    string `json:"collection"`
+}
+
+// CtxSave вызывает `toolkit ctx-save` — сохранение записей контекста проекта.
+func (c *Client) CtxSave(ctx context.Context, in CtxSaveInput) (*CtxSaveResponse, error) {
+	payload, err := json.Marshal(in)
+	if err != nil {
+		return nil, fmt.Errorf("ctx-save payload marshal: %w", err)
+	}
+	var resp CtxSaveResponse
+	if err := c.callArgsTimeout(ctx, "ctx-save", string(payload), &resp, nil, RagTimeout); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // call — общий вызов: code в stdin, JSON-ответ из stdout, JSON-ошибка из stderr.
 func (c *Client) call(ctx context.Context, command, code string, out any) error {
 	return c.callArgs(ctx, command, code, out, nil)
