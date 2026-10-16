@@ -628,7 +628,7 @@ func main() {
 	}
 
 	log.Printf("Registered tools: query_hardware_docs, check_f407_rules, cubemx_read_user_blocks, cubemx_insert_code, cubemx_find_weak_overrides, cubemx_validate_project%s", advancedToolsLogSuffix())
-	log.Printf("MCP Server ready (v%s, %d tools), listening on stdin...", ServerVersion, 6+advancedToolsCount())
+	log.Printf("MCP Server ready (v%s, %d tools), listening on stdin...", ServerVersion, 5+advancedToolsCount())
 
 	// Запуск STDIO транспорта
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
