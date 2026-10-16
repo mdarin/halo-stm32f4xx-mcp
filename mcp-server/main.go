@@ -13,6 +13,7 @@ import (
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/rag/embedder"
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/rag/qdrant"
 	"github.com/mdari/halo-f407-mcp/mcp-server/internal/rag/searcher"
+	"github.com/mdari/halo-f407-mcp/mcp-server/internal/toolkit"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -417,11 +418,30 @@ func main() {
 	globalFinder = cubemx.NewFinder()
 	globalValidator = cubemx.NewValidator()
 
+	// Инициализация клиента Rust toolkit (Фаза 1): TOOLKIT_PATH обязателен
+	// для ast_analyze_code / generate_doc_comments / advanced_lint.
+	if tp := os.Getenv("TOOLKIT_PATH"); tp != "" {
+		tc, err := toolkit.NewClient()
+		if err != nil {
+			log.Printf("toolkit client init failed: %v", err)
+		} else {
+			globalToolkit = tc
+			vinfo, err := tc.Version(context.Background())
+			if err != nil {
+				log.Printf("toolkit version check failed: %v (advanced tools may misbehave)", err)
+			} else {
+				log.Printf("toolkit: %s", vinfo.Raw)
+			}
+		}
+	} else {
+		log.Printf("TOOLKIT_PATH is not set: ast_analyze_code, generate_doc_comments and advanced_lint are disabled")
+	}
+
 	// Создание MCP сервера
 	server := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "stm32f407-mcp",
-			Version: "0.5.0", // Обновлена версия (добавлены все 6 инструментов)
+			Version: "0.6.0", // Фаза 1: +3 advanced tools через Rust toolkit
 		},
 		nil, // options
 	)
@@ -486,11 +506,57 @@ func main() {
 		validateProjectHandler,
 	)
 
-	log.Printf("Registered tools: query_hardware_docs, check_f407_rules, cubemx_read_user_blocks, cubemx_insert_code, cubemx_find_weak_overrides, cubemx_validate_project")
-	log.Printf("MCP Server ready (v0.5.0, 6 tools), listening on stdin...")
+	// Регистрация advanced-инструментов (Фаза 1, Rust toolkit)
+	if globalToolkit != nil {
+		mcp.AddTool(
+			server,
+			&mcp.Tool{
+				Name:        "ast_analyze_code",
+				Description: "Parse C code with a real C AST (tree-sitter) and extract: function definitions, variable declarations (including locals), HAL function calls, and section attributes (__attribute__((section(...)))). Returns exact positions (byte range + line/col) for every item. Use it to build precise edits instead of regex matching.",
+			},
+			astAnalyzeHandler,
+		)
+		mcp.AddTool(
+			server,
+			&mcp.Tool{
+				Name:        "generate_doc_comments",
+				Description: "Generate Doxygen comment stubs (/** @brief ... @param ... @retval ... */) for C functions that have no doc comment. Returns insertion points (byte_start == byte_end) so the agent can apply them without breaking formatting. Functions that already have a doc comment are skipped and counted in functions_skipped.",
+			},
+			generateDocCommentsHandler,
+		)
+		mcp.AddTool(
+			server,
+			&mcp.Tool{
+				Name:        "advanced_lint",
+				Description: "AST-based lint for STM32F407 pitfalls: DMA buffers in CCM RAM (only when the buffer is actually used by a DMA call), NVIC priority grouping, USB 48 MHz clock requirement, Flash ROP level 2. Returns violations with exact positions and fix hints. Set flow=true to additionally track variable usage in DMA call paths.",
+			},
+			advancedLintHandler,
+		)
+	}
+
+	log.Printf("Registered tools: query_hardware_docs, check_f407_rules, cubemx_read_user_blocks, cubemx_insert_code, cubemx_find_weak_overrides, cubemx_validate_project%s", advancedToolsLogSuffix())
+	log.Printf("MCP Server ready (v0.6.0, %d tools), listening on stdin...", 6+advancedToolsCount())
 
 	// Запуск STDIO транспорта
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
+}
+
+// globalToolkit — общий клиент Rust toolkit для advanced-инструментов.
+var globalToolkit *toolkit.Client
+
+// advancedToolsCount — сколько advanced-инструментов реально зарегистрировано.
+func advancedToolsCount() int {
+	if globalToolkit != nil {
+		return 3
+	}
+	return 0
+}
+
+func advancedToolsLogSuffix() string {
+	if globalToolkit != nil {
+		return ", ast_analyze_code, generate_doc_comments, advanced_lint"
+	}
+	return ""
 }

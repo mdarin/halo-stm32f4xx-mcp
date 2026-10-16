@@ -80,15 +80,25 @@ type DocsResponse struct {
 
 // FunctionItem — извлечённая функция (CONTRACT.md §2).
 type FunctionItem struct {
-	Name     string   `json:"name"`
-	Position Position `json:"position"`
+	Name       string      `json:"name"`
+	Signature  string      `json:"signature"`
+	Position   Position    `json:"position"`
+	Attributes []Attribute `json:"attributes"`
+}
+
+// Attribute — атрибут объявления (CONTRACT.md §2).
+type Attribute struct {
+	Name string   `json:"name"`
+	Args []string `json:"args"`
 }
 
 // VariableItem — извлечённая переменная (CONTRACT.md §2).
 type VariableItem struct {
-	Name     string   `json:"name"`
-	Type     string   `json:"type"`
-	Position Position `json:"position"`
+	Name       string      `json:"name"`
+	Type       string      `json:"type"`
+	Storage    string      `json:"storage"`
+	Position   Position    `json:"position"`
+	Attributes []Attribute `json:"attributes"`
 }
 
 // CallItem — извлечённый вызов функции (CONTRACT.md §2).
@@ -97,15 +107,21 @@ type CallItem struct {
 	Position Position `json:"position"`
 }
 
+// SourceStats — размер исходника (CONTRACT.md §2).
+type SourceStats struct {
+	Bytes int `json:"bytes"`
+	Lines int `json:"lines"`
+}
+
 // AnalyzeResponse — ответ analyze (CONTRACT.md §2).
 type AnalyzeResponse struct {
 	SchemaVersion int               `json:"schema_version"`
 	Command       string            `json:"command"`
-	ParseErrors   []json.RawMessage `json:"parse_errors"`
+	SourceStats   SourceStats       `json:"source_stats"`
 	Functions     []FunctionItem    `json:"functions"`
 	Variables     []VariableItem    `json:"variables"`
-	Calls         []CallItem        `json:"calls"`
-	Sections      []json.RawMessage `json:"sections"`
+	HalCalls      []CallItem        `json:"hal_calls"`
+	ParseErrors   []json.RawMessage `json:"parse_errors"`
 }
 
 // toolkitError — формат ошибки из stderr (CONTRACT.md §8).

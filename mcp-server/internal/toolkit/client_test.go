@@ -58,7 +58,7 @@ func itoa(n int) string {
 }
 
 func analyzeStubResponse() string {
-	return `{"schema_version":1,"command":"analyze","parse_errors":[],"functions":[{"name":"main","position":{"byte_start":0,"byte_end":30,"line":1,"col":1}}],"variables":[],"calls":[],"sections":[]}`
+	return `{"schema_version":1,"command":"analyze","source_stats":{"bytes":30,"lines":1},"parse_errors":[],"functions":[{"name":"main","position":{"byte_start":0,"byte_end":30,"line":1,"col":1}}],"variables":[],"hal_calls":[]}`
 }
 
 func TestAnalyzeParsesResponse(t *testing.T) {
