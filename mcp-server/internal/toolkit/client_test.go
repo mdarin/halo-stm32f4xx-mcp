@@ -311,3 +311,89 @@ func TestRealToolkitBinary(t *testing.T) {
 	b, _ := json.Marshal(resp.Summary)
 	t.Logf("real toolkit summary: %s", b)
 }
+
+func TestCtxSaveMarshalsStdin(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ctx-save.sh")
+	// Заглушка: копирует stdin в stdout-обёртку, проверяя, что вход дошёл.
+	if err := os.WriteFile(path, []byte(`#!/bin/sh
+cat > "$TMPDIR/ctxsave-stdin.json" 2>/dev/null || cat > /tmp/ctxsave-stdin.json
+printf '%s' '{"schema_version":1,"command":"ctx-save","saved":1,"collection":"stm32_project_context"}'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := NewClientWithPath(path, 5*time.Second)
+
+	resp, err := c.CtxSave(context.Background(), CtxSaveInput{
+		ProjectPath: "/p",
+		Entries: []CtxEntryInput{{
+			Key:     "mod:main.c:4:123",
+			DocType: "modification",
+			Text:    "Modified main.c block 4",
+			Modification: &CtxModification{
+				File: "/p/src/main.c", Block: "4", Mode: "append", Bytes: 10, Timestamp: 123,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CtxSave: %v", err)
+	}
+	if resp.Saved != 1 || resp.Collection != "stm32_project_context" {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+
+	// Проверяем, что stdin дошёл как валидный JSON с нужными полями.
+	loc := filepath.Join(os.TempDir(), "ctxsave-stdin.json")
+	raw, err := os.ReadFile(loc)
+	if err != nil {
+		t.Skipf("stub temp file unavailable: %v", err)
+	}
+	var in CtxSaveInput
+	if err := json.Unmarshal(raw, &in); err != nil {
+		t.Fatalf("stdin is not valid JSON: %v; raw: %s", err, raw)
+	}
+	if in.ProjectPath != "/p" || len(in.Entries) != 1 || in.Entries[0].Modification == nil {
+		t.Fatalf("unexpected stdin payload: %s", raw)
+	}
+	os.Remove(loc)
+}
+
+func TestCtxLoadNormalizesNulls(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ctx-load.sh")
+	// Пустые опциональные поля отсутствуют → Go-JSON null → нормализация.
+	if err := os.WriteFile(path, []byte(`#!/bin/sh
+printf '%s' '{"schema_version":1,"command":"ctx-load","project_path":"/p","count":1,"entries":[{"project_path":"/p","ctx_key":"summary","doc_type":"project_context","text":"t"}]}'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := NewClientWithPath(path, 5*time.Second)
+
+	resp, err := c.CtxLoad(context.Background(), "/p", "")
+	if err != nil {
+		t.Fatalf("CtxLoad: %v", err)
+	}
+	e := resp.Entries[0]
+	if e.UserPreferences == nil || e.Peripherals == nil || e.Interrupts == nil {
+		t.Fatalf("nil fields not normalized: %+v", e)
+	}
+}
+
+func TestCtxSearchNormalizesNulls(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ctx-search.sh")
+	if err := os.WriteFile(path, []byte(`#!/bin/sh
+printf '%s' '{"schema_version":1,"command":"ctx-search","query":"q"}'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := NewClientWithPath(path, 5*time.Second)
+
+	resp, err := c.CtxSearch(context.Background(), "/p", "q", 3)
+	if err != nil {
+		t.Fatalf("CtxSearch: %v", err)
+	}
+	if resp.Results == nil {
+		t.Fatal("nil results not normalized")
+	}
+}
