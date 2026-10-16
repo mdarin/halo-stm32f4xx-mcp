@@ -252,6 +252,32 @@ pub struct CtxSearchResponse {
     pub results: Vec<CtxHit>,
 }
 
+/// USER CODE блок, найденный в исходниках (CONTRACT.md §10).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CtxBlock {
+    pub file: String,
+    pub name: String,
+}
+
+/// Ответ ctx-extract (CONTRACT.md §10): автосбор периферии/IRQ/blocks
+/// из .ioc + AST-скана. Diff-поля заполняются при доступном Qdrant.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CtxExtractResponse {
+    pub schema_version: u32,
+    pub command: String,
+    pub project_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcu: Option<String>,
+    pub peripherals: Vec<String>,
+    pub interrupts: Vec<String>,
+    pub files: Vec<String>,
+    pub blocks: Vec<CtxBlock>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_peripherals: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_interrupts: Option<Vec<String>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Response {
@@ -266,6 +292,7 @@ pub enum Response {
     CtxSave(CtxSaveResponse),
     CtxLoad(CtxLoadResponse),
     CtxSearch(CtxSearchResponse),
+    CtxExtract(CtxExtractResponse),
 }
 
 #[allow(dead_code)]

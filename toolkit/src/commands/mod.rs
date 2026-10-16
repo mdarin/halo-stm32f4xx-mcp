@@ -4,6 +4,7 @@ use std::io::Read;
 use crate::models::{Response, ToolkitError};
 
 pub mod analyze;
+pub mod ctx_extract;
 pub mod ctx_load;
 pub mod ctx_save;
 pub mod ctx_search;
@@ -38,6 +39,7 @@ pub fn registry() -> Vec<Box<dyn Command>> {
         Box::new(ctx_save::CtxSave),
         Box::new(ctx_load::CtxLoad),
         Box::new(ctx_search::CtxSearch),
+        Box::new(ctx_extract::CtxExtract),
     ]
 }
 

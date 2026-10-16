@@ -128,3 +128,11 @@ toolkit ctx-load --project /abs/path/project --key prefs
 ```bash
 toolkit ctx-search --project /abs/path/project -q "как настроен PWM" --limit 3
 ```
+
+### `toolkit ctx-extract`
+
+Автосбор контекста проекта: периферия из `*.ioc` (`Mcu.IP*`), MCU (`Mcu.Name`), IRQ-обработчики (AST-скан `_IRQHandler`), USER CODE блоки и файлы с ними. Если Qdrant доступен — заполняет `new_peripherals`/`new_interrupts` (отличия от сохранённого контекста); если нет — поля опущены, команда не падает. Вывод пригоден для пайпа в `ctx-save` (поля `peripherals`/`interrupts` совпадают по именам).
+
+```bash
+toolkit ctx-extract --project /abs/path/project
+```
