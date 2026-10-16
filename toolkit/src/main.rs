@@ -1,6 +1,7 @@
 mod analyzer;
 mod commands;
 mod config;
+mod docs_gen;
 mod lint;
 mod models;
 

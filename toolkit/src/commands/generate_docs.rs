@@ -23,14 +23,13 @@ impl Command for GenerateDocs {
 
     fn run(&self, matches: &clap::ArgMatches) -> Result<Response, ToolkitError> {
         let code = code_from(matches, self.name())?;
-        let _style = matches.get_one::<String>("style");
-        let _ = code;
+        let result = crate::docs_gen::run(&code);
         Ok(Response::GenerateDocs(DocsResponse {
             schema_version: SCHEMA_VERSION,
             command: self.name().into(),
-            insertions: vec![],
-            functions_documented: 0,
-            functions_skipped: 0,
+            insertions: result.insertions,
+            functions_documented: result.functions_documented,
+            functions_skipped: result.functions_skipped,
         }))
     }
 }
