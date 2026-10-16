@@ -1,0 +1,348 @@
+{
+ "target": "STM32F407",
+ "doc": "datasheet",
+ "files": [
+  {
+   "file": "datasheet_01_Introduction.md",
+   "doc": "datasheet",
+   "chapter": 1,
+   "section": "1",
+   "title": "Introduction",
+   "bytes": 1107,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_02_Description.md",
+   "doc": "datasheet",
+   "chapter": 2,
+   "section": "2",
+   "title": "Description",
+   "bytes": 8678,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_03_3_1_Arm_CortexM4_core_with_FPU_and_embedded_flash_and.md",
+   "doc": "datasheet",
+   "chapter": 3,
+   "section": "3.1",
+   "title": "Arm® Cortex®-M4 core with FPU and embedded flash and SRAM",
+   "bytes": 11003,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_03_3_15_Power_supply_supervisor.md",
+   "doc": "datasheet",
+   "chapter": 3,
+   "section": "3.15",
+   "title": "Power supply supervisor",
+   "bytes": 3190,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_03_3_16_Voltage_regulator.md",
+   "doc": "datasheet",
+   "chapter": 3,
+   "section": "3.16",
+   "title": "Voltage regulator",
+   "bytes": 5276,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_03_3_18_Realtime_clock_RTC_backup_SRAM_and_backup_register.md",
+   "doc": "datasheet",
+   "chapter": 3,
+   "section": "3.18",
+   "title": "Real-time clock (RTC), backup SRAM and backup registers",
+   "bytes": 2400,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_03_3_19_Lowpower_modes.md",
+   "doc": "datasheet",
+   "chapter": 3,
+   "section": "3.19",
+   "title": "Low-power modes",
+   "bytes": 2358,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_03_3_21_Timers_and_watchdogs.md",
+   "doc": "datasheet",
+   "chapter": 3,
+   "section": "3.21",
+   "title": "Timers and watchdogs",
+   "bytes": 6147,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_03_3_23_Universal_synchronousasynchronous_receiver_transmi.md",
+   "doc": "datasheet",
+   "chapter": 3,
+   "section": "3.23",
+   "title": "Universal synchronous/asynchronous receiver transmitters (USART)",
+   "bytes": 4228,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_03_3_28_Ethernet_MAC_interface_with_dedicated_DMA_and_IEEE.md",
+   "doc": "datasheet",
+   "chapter": 3,
+   "section": "3.28",
+   "title": "Ethernet MAC interface with dedicated DMA and IEEE 1588 support",
+   "bytes": 10065,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_04_Pinouts__c01.md",
+   "doc": "datasheet",
+   "chapter": 4,
+   "section": "4",
+   "title": "Pinouts — (intro)",
+   "bytes": 7494,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_04_Pinouts__c02.md",
+   "doc": "datasheet",
+   "chapter": 4,
+   "section": "4",
+   "title": "Pinouts — Figure 16 STM32F40xxx UFBGA176 ballout",
+   "bytes": 26426,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_04_Pinouts__c03.md",
+   "doc": "datasheet",
+   "chapter": 4,
+   "section": "4",
+   "title": "Pinouts — Table 8 FSMC pin definition",
+   "bytes": 2958,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_04_Pinouts__c04.md",
+   "doc": "datasheet",
+   "chapter": 4,
+   "section": "4",
+   "title": "Pinouts — Table 9 Alternate function mapping",
+   "bytes": 4870,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_04_Pinouts__c05.md",
+   "doc": "datasheet",
+   "chapter": 4,
+   "section": "4",
+   "title": "Pinouts — Table 9 Alternate function mapping (continued)",
+   "bytes": 4039,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_04_Pinouts__c06.md",
+   "doc": "datasheet",
+   "chapter": 4,
+   "section": "4",
+   "title": "Pinouts — Table 9 Alternate function mapping (continued)",
+   "bytes": 3734,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_04_Pinouts__c07.md",
+   "doc": "datasheet",
+   "chapter": 4,
+   "section": "4",
+   "title": "Pinouts — Table 9 Alternate function mapping (continued)",
+   "bytes": 5373,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_05_Memory_mapping.md",
+   "doc": "datasheet",
+   "chapter": 5,
+   "section": "5",
+   "title": "Memory mapping",
+   "bytes": 6969,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c01.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.1 Parameter conditions",
+   "bytes": 2250,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c02.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.1.6 Power supply scheme",
+   "bytes": 12178,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c03.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.5 Embedded reset and power control block characteristics",
+   "bytes": 3047,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c04.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.6 Supply current characteristics",
+   "bytes": 20687,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c05.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.7 Wakeup time from low-power mode",
+   "bytes": 10374,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c06.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.10 PLL characteristics",
+   "bytes": 3697,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c07.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.11 PLL spread spectrum clock generation (SSCG) characteristics",
+   "bytes": 6421,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c08.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.13 EMC characteristics",
+   "bytes": 6186,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c09.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.15 I/O current injection characteristics",
+   "bytes": 2214,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c10.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.16 I/O port characteristics",
+   "bytes": 10124,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c11.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.17 NRST pin characteristics",
+   "bytes": 2260,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c12.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.18 TIM timer characteristics",
+   "bytes": 2454,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c13.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.19 Communications interfaces",
+   "bytes": 17458,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c14.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.21 12-bit ADC characteristics",
+   "bytes": 10505,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c15.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.25 DAC electrical characteristics",
+   "bytes": 5060,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c16.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.26 FSMC characteristics",
+   "bytes": 22395,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_06_Electrical_characteristics__c17.md",
+   "doc": "datasheet",
+   "chapter": 6,
+   "section": "6",
+   "title": "Electrical characteristics — 6.3.28 SD/SDIO MMC card host interface (SDIO) characteristics",
+   "bytes": 2491,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_07_Electrical_characteristics_cont.md",
+   "doc": "datasheet",
+   "chapter": 7,
+   "section": "7",
+   "title": "Electrical characteristics (cont.)",
+   "bytes": 22711,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_08_Ordering_information.md",
+   "doc": "datasheet",
+   "chapter": 8,
+   "section": "8",
+   "title": "Ordering information",
+   "bytes": 5164,
+   "not_on_f407": false
+  },
+  {
+   "file": "datasheet_09_Important_security_notice.md",
+   "doc": "datasheet",
+   "chapter": 9,
+   "section": "9",
+   "title": "Important security notice",
+   "bytes": 3960,
+   "not_on_f407": false
+  }
+ ]
+}

@@ -1,0 +1,87 @@
+{
+ "target": "STM32F407",
+ "doc": "errata",
+ "files": [
+  {
+   "file": "errata_01_CortexM4_core_limitations.md",
+   "doc": "errata",
+   "chapter": 1,
+   "section": "1",
+   "title": "Cortex-M4 core limitations",
+   "bytes": 3183,
+   "not_on_f407": false
+  },
+  {
+   "file": "errata_02_2_1_System_limitations.md",
+   "doc": "errata",
+   "chapter": 2,
+   "section": "2.1",
+   "title": "System limitations",
+   "bytes": 19708,
+   "not_on_f407": false
+  },
+  {
+   "file": "errata_02_2_4_I2C_peripheral_limitations.md",
+   "doc": "errata",
+   "chapter": 2,
+   "section": "2.4",
+   "title": "I2C peripheral limitations",
+   "bytes": 7502,
+   "not_on_f407": false
+  },
+  {
+   "file": "errata_02_2_6_USART_peripheral_limitations.md",
+   "doc": "errata",
+   "chapter": 2,
+   "section": "2.6",
+   "title": "USART peripheral limitations",
+   "bytes": 5962,
+   "not_on_f407": false
+  },
+  {
+   "file": "errata_02_2_8_OTGFS_peripheral_limitations.md",
+   "doc": "errata",
+   "chapter": 2,
+   "section": "2.8",
+   "title": "OTG_FS peripheral limitations",
+   "bytes": 2901,
+   "not_on_f407": false
+  },
+  {
+   "file": "errata_02_2_9_Ethernet_peripheral_limitations.md",
+   "doc": "errata",
+   "chapter": 2,
+   "section": "2.9",
+   "title": "Ethernet peripheral limitations",
+   "bytes": 7045,
+   "not_on_f407": false
+  },
+  {
+   "file": "errata_02_2_10_FSMC_peripheral_limitations.md",
+   "doc": "errata",
+   "chapter": 2,
+   "section": "2.10",
+   "title": "FSMC peripheral limitations",
+   "bytes": 1908,
+   "not_on_f407": false
+  },
+  {
+   "file": "errata_02_2_11_SDIO_peripheral_limitations.md",
+   "doc": "errata",
+   "chapter": 2,
+   "section": "2.11",
+   "title": "SDIO peripheral limitations",
+   "bytes": 5960,
+   "not_on_f407": false
+  },
+  {
+   "file": "errata_02_2_14_SPI_peripheral_limitations.md",
+   "doc": "errata",
+   "chapter": 2,
+   "section": "2.14",
+   "title": "SPI peripheral limitations",
+   "bytes": 3702,
+   "not_on_f407": false
+  }
+ ]
+}

@@ -2,7 +2,7 @@
 """
 Индексация документации STM32F407 в Qdrant.
 
-Источник: kb/manifest.json (обогащённый peripheral, registers, tags)
+Источники: kb/stm32f4xx/{reference,datasheet,errata}/manifest.json (обогащённый peripheral, registers, tags)
 Цель: Qdrant коллекция stm32f407_docs для RAG-поиска
 
 Использование:
@@ -31,10 +31,13 @@ if sys.platform == 'win32':
 # Конфигурация
 # ============================================================================
 
-KB_DIR = Path("kb")
-MANIFEST_PATH = KB_DIR / "manifest.json"
-INDEX_MD_PATH = KB_DIR / "INDEX.md"
-
+KB_ROOT = Path("kb/stm32f4xx")
+# doc_type -> подкаталог kb/stm32f4xx/<name>/ с manifest.json
+DOC_DIRS = {
+    "reference": KB_ROOT / "reference",
+    "datasheet": KB_ROOT / "datasheet",
+    "errata": KB_ROOT / "errata",
+}
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
 COLLECTION = os.environ.get("COLLECTION", "stm32f407_docs")
@@ -183,10 +186,10 @@ def chunk_by_headers(content, file_info):
 # Индексация
 # ============================================================================
 
-def index_file(file_info, stats):
+def index_file(file_info, stats, doc_dir, doc_type):
     """Индексация одного файла"""
     file_name = file_info.get("file", "")
-    file_path = KB_DIR / file_name
+    file_path = doc_dir / file_name
     
     if not file_path.exists():
         stats["errors"] += 1
@@ -202,6 +205,7 @@ def index_file(file_info, stats):
     # Метаданные из manifest
     metadata = {
         "source_file": file_name,
+        "doc_type": doc_type,
         "chapter": file_info.get("chapter"),
         "section": file_info.get("section"),
         "title": file_info.get("title"),
@@ -293,29 +297,39 @@ def index_all():
         return
     print("  ✅ Ollama OK")
     
-    # Загрузка manifest
-    print(f"\n📖 Loading manifest from {MANIFEST_PATH}...")
-    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    files = manifest.get("files", [])
-    print(f"  Found {len(files)} files")
+    # Загрузка manifest по типам документации
+    doc_sets = []
+    for doc_type, doc_dir in DOC_DIRS.items():
+        manifest_path = doc_dir / "manifest.json"
+        if not manifest_path.exists():
+            print(f"  ⚠️  {manifest_path} не найден, пропуск '{doc_type}'")
+            continue
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        files = manifest.get("files", [])
+        print(f"  📖 {doc_type}: {len(files)} файлов ({manifest_path})")
+        doc_sets.append((doc_type, doc_dir, files))
     
-    # Фильтрация not_on_f407
-    f407_files = [f for f in files if not f.get("not_on_f407", False)]
-    skipped = len(files) - len(f407_files)
-    print(f"  F407-relevant: {len(f407_files)} files")
-    print(f"  Skipped (F42x/43x): {skipped} files")
-    
+    # Фильтрация not_on_f407 (только reference размечен)
+    all_files = []
+    for doc_type, doc_dir, files in doc_sets:
+        f407_files = [f for f in files if not f.get("not_on_f407", False)]
+        skipped = len(files) - len(f407_files)
+        print(f"  {doc_type}: F407-relevant {len(f407_files)}, skipped {skipped}")
+        for f in f407_files:
+            all_files.append((doc_type, doc_dir, f))
+
     # Создание коллекции
     print()
     create_collection()
-    
+
     # Проверка уже проиндексированных файлов
     print(f"\n🔍 Checking existing points...")
     indexed_files = set()
+    missing_doc_type = set()
     try:
         resp = requests.post(
             f"{QDRANT_URL}/collections/{COLLECTION}/points/scroll",
-            json={"limit": 1000, "with_payload": {"include": ["source_file"]}},
+            json={"limit": 1000, "with_payload": {"include": ["source_file", "doc_type"]}},
             headers=QDRANT_HEADERS
         )
         if resp.status_code == 200:
@@ -324,37 +338,51 @@ def index_all():
                 source = point.get("payload", {}).get("source_file")
                 if source:
                     indexed_files.add(source)
+                    if not point.get("payload", {}).get("doc_type"):
+                        missing_doc_type.add(source)
             print(f"  Found {len(indexed_files)} already indexed files")
+            if missing_doc_type:
+                print(f"  Found {len(missing_doc_type)} files without doc_type (backfill planned)")
     except Exception as e:
         print(f"  ⚠️  Could not check existing points: {e}")
-    
+
     # Фильтрация уже проиндексированных
-    files_to_index = [f for f in f407_files if f.get("file") not in indexed_files]
+    files_to_index = [
+        (doc_type, doc_dir, f) for doc_type, doc_dir, f in all_files
+        if f.get("file") not in indexed_files
+    ]
     print(f"  Files to index: {len(files_to_index)}")
-    
+
     if not files_to_index:
         print("\n✅ All files already indexed!")
+        if missing_doc_type:
+            backfill_doc_type(missing_doc_type, doc_sets)
         return
-    
+
     # Индексация
     print(f"\n🔄 Indexing files...")
     stats = {"files": 0, "chunks": 0, "errors": 0, "skipped": 0}
+    by_type = {t: {"files": 0, "chunks": 0} for t, _, _ in doc_sets}
     all_points = []
-    
-    for i, file_info in enumerate(files_to_index):
+
+    for i, (doc_type, doc_dir, file_info) in enumerate(files_to_index):
         file_name = file_info.get("file", "")
         print(f"\r  [{i+1}/{len(files_to_index)}] {file_name[:50]}...", end="", flush=True)
-        
-        points = index_file(file_info, stats)
+
+        points = index_file(file_info, stats, doc_dir, doc_type)
         all_points.extend(points)
         stats["files"] += 1
-        
+        by_type[doc_type]["files"] += 1
+        by_type[doc_type]["chunks"] += len(points)
+
         # Промежуточная загрузка каждые 50 файлов
         if len(all_points) >= 50:
             upload_batch(all_points)
             all_points = []
-    
+
     print(f"\n\n  ✅ Indexed {stats['files']} files, {stats['chunks']} chunks")
+    for doc_type, s in by_type.items():
+        print(f"    {doc_type}: {s['files']} files, {s['chunks']} chunks")
     if stats["errors"]:
         print(f"  ⚠️  Errors: {stats['errors']}")
     
@@ -363,11 +391,16 @@ def index_all():
         print(f"\n📤 Uploading remaining {len(all_points)} points to Qdrant...")
         upload_batch(all_points)
         print(f"  ✅ Uploaded")
-    
-    # Индексация INDEX.md (семантический указатель)
+
+    # Backfill doc_type для старых точек без него
+    if missing_doc_type:
+        backfill_doc_type(missing_doc_type, doc_sets)
+
+    # Индексация INDEX.md (семантический указатель, reference)
     print(f"\n📇 Indexing INDEX.md as semantic guide...")
-    if INDEX_MD_PATH.exists():
-        index_content = INDEX_MD_PATH.read_text(encoding="utf-8")
+    index_md_path = DOC_DIRS["reference"] / "INDEX.md"
+    if index_md_path.exists():
+        index_content = index_md_path.read_text(encoding="utf-8")
         try:
             vector = embed(index_content)
             index_point = {
@@ -375,6 +408,7 @@ def index_all():
                 "vector": vector,
                 "payload": {
                     "type": "index",
+                    "doc_type": "index",
                     "text": index_content,
                     "source_file": "INDEX.md",
                     "title": "RM0090 Semantic Index — Task → Chapter Guide",
@@ -395,8 +429,35 @@ def index_all():
     print(f"  Files indexed: {stats['files']}")
     print(f"  Chunks created: {stats['chunks']}")
     print(f"  Errors: {stats['errors']}")
-    
+
     print(f"\n🔍 Test search:")
+
+
+def backfill_doc_type(missing_doc_type, doc_sets):
+    """Добавить doc_type в payload уже проиндексированных точек (без переэмбеддинга)."""
+    print(f"\n🏷️  Backfilling doc_type for {len(missing_doc_type)} files...")
+    name_to_type = {}
+    for doc_type, _, files in doc_sets:
+        for f in files:
+            name_to_type[f.get("file", "")] = doc_type
+    updated = 0
+    for source in missing_doc_type:
+        doc_type = name_to_type.get(source)
+        if not doc_type:
+            continue
+        resp = requests.post(
+            f"{QDRANT_URL}/collections/{COLLECTION}/points/payload",
+            json={
+                "payload": {"doc_type": doc_type},
+                "filter": {"must": [{"key": "source_file", "match": {"value": source}}]}
+            },
+            headers=QDRANT_HEADERS
+        )
+        if resp.status_code in [200, 201]:
+            updated += 1
+        else:
+            print(f"  ⚠️  Failed to set doc_type for {source}: {resp.text}")
+    print(f"  ✅ doc_type set for {updated} files")
     print(f"  curl {QDRANT_URL}/collections/{COLLECTION}/points/search \\")
     print(f"    -H 'Content-Type: application/json' \\")
     print(f"    -d '{{\"vector\": [0.1, 0.2, ...], \"limit\": 5}}'")

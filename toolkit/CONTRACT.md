@@ -279,7 +279,8 @@ upsert батчами по 100 в `PUT /collections/{col}/points`.
 
 `rag-index --path DIR` — индексация каталога kb: читает `manifest.json`
 (схема как в `scripts/index_docs.py`: `files[].file/chapter/section/title/
-peripheral/registers/tags/not_on_f407`), файлы >30000 символов режет по
+peripheral/registers/tags/not_on_f407`; база знаний — `kb/stm32f4xx/
+{reference,datasheet,errata}/`, в payload добавляется `doc_type`), файлы >30000 символов режет по
 заголовкам `### `, id точек детерминированы (первые 8 hex SHA-256 от
 `"{file}:{chunk_idx}"` — parity с python-индексатором), повторный запуск
 перезаписывает точки. Ответ:

@@ -15,7 +15,7 @@ import json
 import re
 from pathlib import Path
 
-KB_DIR = Path("kb")
+KB_DIR = Path("kb/stm32f4xx/reference")
 MANIFEST_PATH = KB_DIR / "manifest.json"
 
 # Маппинг глав → периферия (на основе RM0090)

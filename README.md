@@ -60,5 +60,5 @@ byte/line-позиции); `advanced_lint` — правила F407 (DMA-буфе
 
 ```bash
 python3 -m venv /tmp/venv-index && /tmp/venv-index/bin/pip install -q pypdf requests
-/tmp/venv-index/bin/python scripts/index_docs.py   # kb/ -> Qdrant
+/tmp/venv-index/bin/python scripts/index_docs.py   # kb/stm32f4xx/{reference,datasheet,errata}/ -> Qdrant
 ```
