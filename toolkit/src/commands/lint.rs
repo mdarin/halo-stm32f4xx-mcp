@@ -1,7 +1,7 @@
 use clap::Command as ClapCommand;
 
 use super::Command;
-use crate::models::{Response, LintResponse, SCHEMA_VERSION, Summary, ToolkitError};
+use crate::models::{LintResponse, Response, Summary, ToolkitError, SCHEMA_VERSION};
 
 pub struct Lint;
 

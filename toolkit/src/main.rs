@@ -1,3 +1,4 @@
+mod analyzer;
 mod commands;
 mod config;
 mod models;
@@ -15,8 +16,13 @@ fn main() -> ExitCode {
         Ok(response) => {
             let json = serde_json::to_string(&response).expect("response serialization");
             let mut stdout = std::io::stdout().lock();
-            if stdout.write_all(json.as_bytes()).and_then(|_| stdout.write_all(b"\n")).is_err() {
-                let err = ToolkitError::new(models::ErrorCode::Internal, "failed to write stdout", "");
+            if stdout
+                .write_all(json.as_bytes())
+                .and_then(|_| stdout.write_all(b"\n"))
+                .is_err()
+            {
+                let err =
+                    ToolkitError::new(models::ErrorCode::Internal, "failed to write stdout", "");
                 eprintln!("{}", err.to_json());
                 return ExitCode::from(1);
             }

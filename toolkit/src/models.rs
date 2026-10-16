@@ -12,7 +12,12 @@ pub struct Position {
 
 impl Default for Position {
     fn default() -> Self {
-        Self { byte_start: 0, byte_end: 0, line: 1, col: 1 }
+        Self {
+            byte_start: 0,
+            byte_end: 0,
+            line: 1,
+            col: 1,
+        }
     }
 }
 

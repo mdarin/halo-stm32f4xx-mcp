@@ -41,53 +41,97 @@ pub fn build_root(commands: &[Box<dyn Command>]) -> ClapCommand {
     root
 }
 
-pub fn dispatch(commands: &[Box<dyn Command>], matches: &clap::ArgMatches) -> Result<Response, ToolkitError> {
-    let (name, sub) = matches
-        .subcommand()
-        .ok_or_else(|| ToolkitError::new(crate::models::ErrorCode::Internal, "no subcommand given", ""))?;
+pub fn dispatch(
+    commands: &[Box<dyn Command>],
+    matches: &clap::ArgMatches,
+) -> Result<Response, ToolkitError> {
+    let (name, sub) = matches.subcommand().ok_or_else(|| {
+        ToolkitError::new(
+            crate::models::ErrorCode::Internal,
+            "no subcommand given",
+            "",
+        )
+    })?;
     commands
         .iter()
         .find(|c| c.name() == name)
-        .ok_or_else(|| ToolkitError::new(crate::models::ErrorCode::Internal, format!("unknown subcommand {name}"), name))?
+        .ok_or_else(|| {
+            ToolkitError::new(
+                crate::models::ErrorCode::Internal,
+                format!("unknown subcommand {name}"),
+                name,
+            )
+        })?
         .run(sub)
 }
 
 pub fn read_code(file: Option<&str>, command: &str) -> Result<String, ToolkitError> {
     match file {
-        Some(path) => std::fs::read_to_string(path)
-            .map_err(|e| ToolkitError::new(crate::models::ErrorCode::InputRead, format!("failed to read file {path}: {e}"), command)),
+        Some(path) => std::fs::read_to_string(path).map_err(|e| {
+            ToolkitError::new(
+                crate::models::ErrorCode::InputRead,
+                format!("failed to read file {path}: {e}"),
+                command,
+            )
+        }),
         None => {
             let mut buf = String::new();
-            std::io::stdin()
-                .read_to_string(&mut buf)
-                .map_err(|e| ToolkitError::new(crate::models::ErrorCode::InputRead, format!("failed to read stdin: {e}"), command))?;
+            std::io::stdin().read_to_string(&mut buf).map_err(|e| {
+                ToolkitError::new(
+                    crate::models::ErrorCode::InputRead,
+                    format!("failed to read stdin: {e}"),
+                    command,
+                )
+            })?;
             Ok(buf)
         }
     }
 }
 
 pub fn code_from(matches: &clap::ArgMatches, command: &str) -> Result<String, ToolkitError> {
-    read_code(matches.get_one::<String>("file").map(|s| s.as_str()), command)
+    read_code(
+        matches.get_one::<String>("file").map(|s| s.as_str()),
+        command,
+    )
 }
 
 fn file_flag() -> Arg {
-    Arg::new("file").long("file").value_name("PATH").help("Read code from file instead of stdin")
+    Arg::new("file")
+        .long("file")
+        .value_name("PATH")
+        .help("Read code from file instead of stdin")
 }
 
 fn flow_flag() -> Arg {
-    Arg::new("flow").long("flow").action(ArgAction::SetTrue).help("Track variable usage in DMA paths")
+    Arg::new("flow")
+        .long("flow")
+        .action(ArgAction::SetTrue)
+        .help("Track variable usage in DMA paths")
 }
 
 fn style_flag() -> Arg {
-    Arg::new("style").long("style").value_name("STYLE").default_value("doxygen").help("Comment style")
+    Arg::new("style")
+        .long("style")
+        .value_name("STYLE")
+        .default_value("doxygen")
+        .help("Comment style")
 }
 
 fn rule_context_flag() -> Arg {
-    Arg::new("rule_context").long("rule-context").value_name("CONTEXT").default_value("").help("Rule context to embed alongside the code")
+    Arg::new("rule_context")
+        .long("rule-context")
+        .value_name("CONTEXT")
+        .default_value("")
+        .help("Rule context to embed alongside the code")
 }
 
 fn limit_flag() -> Arg {
-    Arg::new("limit").long("limit").value_name("N").default_value("5").value_parser(clap::value_parser!(usize)).help("Max RAG references")
+    Arg::new("limit")
+        .long("limit")
+        .value_name("N")
+        .default_value("5")
+        .value_parser(clap::value_parser!(usize))
+        .help("Max RAG references")
 }
 
 #[cfg(test)]

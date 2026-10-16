@@ -2,7 +2,7 @@ use clap::Command as ClapCommand;
 
 use super::{code_from, Command};
 use crate::config::Config;
-use crate::models::{RagResponse, Response, SCHEMA_VERSION, ToolkitError};
+use crate::models::{RagResponse, Response, ToolkitError, SCHEMA_VERSION};
 
 pub struct RagSearch;
 

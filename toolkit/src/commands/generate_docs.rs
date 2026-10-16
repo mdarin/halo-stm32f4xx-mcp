@@ -1,7 +1,7 @@
 use clap::Command as ClapCommand;
 
 use super::{code_from, Command};
-use crate::models::{DocsResponse, Response, SCHEMA_VERSION, ToolkitError};
+use crate::models::{DocsResponse, Response, ToolkitError, SCHEMA_VERSION};
 
 pub struct GenerateDocs;
 
@@ -15,7 +15,10 @@ impl Command for GenerateDocs {
     }
 
     fn clap_command(&self) -> ClapCommand {
-        ClapCommand::new(self.name()).about(self.about()).arg(super::file_flag()).arg(super::style_flag())
+        ClapCommand::new(self.name())
+            .about(self.about())
+            .arg(super::file_flag())
+            .arg(super::style_flag())
     }
 
     fn run(&self, matches: &clap::ArgMatches) -> Result<Response, ToolkitError> {

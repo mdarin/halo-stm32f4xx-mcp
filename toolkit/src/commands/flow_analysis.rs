@@ -16,7 +16,9 @@ impl Command for FlowAnalysis {
     }
 
     fn clap_command(&self) -> ClapCommand {
-        ClapCommand::new(self.name()).about(self.about()).arg(super::file_flag())
+        ClapCommand::new(self.name())
+            .about(self.about())
+            .arg(super::file_flag())
     }
 
     fn run(&self, matches: &clap::ArgMatches) -> Result<Response, ToolkitError> {
