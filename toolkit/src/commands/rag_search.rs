@@ -3,6 +3,7 @@ use clap::Command as ClapCommand;
 use super::{code_from, Command};
 use crate::config::Config;
 use crate::models::{Response, ToolkitError};
+use crate::rag;
 
 pub struct RagSearch;
 
@@ -31,11 +32,7 @@ impl Command for RagSearch {
             .unwrap_or_default();
         let limit = matches.get_one::<usize>("limit").copied().unwrap_or(5);
         let cfg = Config::from_env();
-        Ok(Response::RagSearch(crate::rag::run(
-            &code,
-            &rule_context,
-            limit,
-            &cfg,
-        )))
+        let response = rag::rt().block_on(rag::run(&code, &rule_context, limit, &cfg));
+        Ok(Response::RagSearch(response))
     }
 }

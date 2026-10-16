@@ -60,13 +60,15 @@ impl Command for RagUpsert {
             })
             .collect();
 
-        let upserted = rag::upsert_points(points, &cfg).map_err(|e| {
-            crate::models::ToolkitError::new(
-                crate::models::ErrorCode::RagUnavailable,
-                e,
-                self.name(),
-            )
-        })?;
+        let upserted = rag::rt()
+            .block_on(rag::upsert_points(points, &cfg))
+            .map_err(|e| {
+                crate::models::ToolkitError::new(
+                    crate::models::ErrorCode::RagUnavailable,
+                    e,
+                    self.name(),
+                )
+            })?;
 
         Ok(Response::RagUpsert(RagUpsertResponse {
             schema_version: SCHEMA_VERSION,

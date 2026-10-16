@@ -17,14 +17,13 @@ struct SearchResponse {
     result: Vec<Hit>,
 }
 
-pub fn search(
+pub async fn search(
+    client: &reqwest::Client,
     cfg: &Config,
     vector: &[f32],
     limit: usize,
     filter: Option<&serde_json::Value>,
 ) -> Result<Vec<Hit>, String> {
-    let agent: ureq::Agent = ureq::AgentBuilder::new().timeout(REQUEST_TIMEOUT).build();
-
     let mut body = serde_json::json!({
         "vector": vector,
         "limit": limit,
@@ -34,23 +33,26 @@ pub fn search(
         body["filter"] = f.clone();
     }
 
-    let mut request = agent
-        .post(&format!(
+    let mut request = client
+        .post(format!(
             "{}/collections/{}/points/search",
             cfg.qdrant_url.trim_end_matches('/'),
             cfg.collection
         ))
-        .set("Content-Type", "application/json");
+        .timeout(REQUEST_TIMEOUT);
     if let Some(key) = &cfg.qdrant_api_key {
-        request = request.set("api-key", key);
+        request = request.header("api-key", key);
     }
 
     let response = request
-        .send_json(&body)
+        .json(&body)
+        .send()
+        .await
         .map_err(|e| format!("qdrant request failed: {e}"))?;
 
     let parsed: SearchResponse = response
-        .into_json()
+        .json()
+        .await
         .map_err(|e| format!("qdrant decode failed: {e}"))?;
 
     Ok(parsed.result)
@@ -58,31 +60,39 @@ pub fn search(
 
 /// Upsert точек (id, vector, payload) в коллекцию (CONTRACT.md §7).
 /// points — готовые JSON-объекты Qdrant.
-pub fn upsert(cfg: &Config, points: &[serde_json::Value]) -> Result<(), String> {
+pub async fn upsert(
+    client: &reqwest::Client,
+    cfg: &Config,
+    points: &[serde_json::Value],
+) -> Result<(), String> {
     if points.is_empty() {
         return Ok(());
     }
-    let agent: ureq::Agent = ureq::AgentBuilder::new().timeout(REQUEST_TIMEOUT).build();
 
     let body = serde_json::json!({ "points": points });
 
-    let mut request = agent
-        .put(&format!(
+    let mut request = client
+        .put(format!(
             "{}/collections/{}/points",
             cfg.qdrant_url.trim_end_matches('/'),
             cfg.collection
         ))
-        .set("Content-Type", "application/json");
+        .timeout(REQUEST_TIMEOUT);
     if let Some(key) = &cfg.qdrant_api_key {
-        request = request.set("api-key", key);
+        request = request.header("api-key", key);
     }
 
     let response = request
-        .send_json(&body)
+        .json(&body)
+        .send()
+        .await
         .map_err(|e| format!("qdrant upsert failed: {e}"))?;
 
-    if response.status() != 200 {
-        return Err(format!("qdrant upsert returned status {}", response.status()));
+    if response.status().as_u16() != 200 {
+        return Err(format!(
+            "qdrant upsert returned status {}",
+            response.status()
+        ));
     }
     Ok(())
 }
@@ -132,7 +142,15 @@ mod tests {
             .mount(&server)
             .await;
 
-        let hits = search(&test_cfg(&server.uri()), &[0.1, 0.2], 3, None).unwrap();
+        let hits = search(
+            &reqwest::Client::new(),
+            &test_cfg(&server.uri()),
+            &[0.1, 0.2],
+            3,
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].id, 7);
         assert!((hits[0].score - 0.9).abs() < 1e-9);
@@ -151,7 +169,9 @@ mod tests {
             .await;
         let mut cfg = test_cfg(&server.uri());
         cfg.qdrant_api_key = Some("secret".into());
-        let hits = search(&cfg, &[0.0], 1, None).unwrap();
+        let hits = search(&reqwest::Client::new(), &cfg, &[0.0], 1, None)
+            .await
+            .unwrap();
         assert!(hits.is_empty());
     }
 
@@ -162,7 +182,15 @@ mod tests {
             .respond_with(ResponseTemplate::new(500))
             .mount(&server)
             .await;
-        assert!(search(&test_cfg(&server.uri()), &[0.0], 1, None).is_err());
+        assert!(search(
+            &reqwest::Client::new(),
+            &test_cfg(&server.uri()),
+            &[0.0],
+            1,
+            None
+        )
+        .await
+        .is_err());
     }
 
     #[tokio::test]
@@ -178,6 +206,14 @@ mod tests {
             )
             .mount(&server)
             .await;
-        search(&test_cfg(&server.uri()), &[0.0], 1, Some(&filter)).unwrap();
+        search(
+            &reqwest::Client::new(),
+            &test_cfg(&server.uri()),
+            &[0.0],
+            1,
+            Some(&filter),
+        )
+        .await
+        .unwrap();
     }
 }

@@ -50,13 +50,15 @@ impl Command for RagQuery {
         let limit = matches.get_one::<usize>("limit").copied().unwrap_or(5);
         let cfg = Config::from_env();
 
-        let results = rag::query(&query, &peripheral, limit, &cfg).map_err(|e| {
-            crate::models::ToolkitError::new(
-                crate::models::ErrorCode::RagUnavailable,
-                e,
-                self.name(),
-            )
-        })?;
+        let results = rag::rt()
+            .block_on(rag::query(&query, &peripheral, limit, &cfg))
+            .map_err(|e| {
+                crate::models::ToolkitError::new(
+                    crate::models::ErrorCode::RagUnavailable,
+                    e,
+                    self.name(),
+                )
+            })?;
 
         Ok(Response::RagQuery(RagQueryResponse {
             schema_version: SCHEMA_VERSION,

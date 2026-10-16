@@ -17,15 +17,13 @@ impl Command for RagIndex {
     }
 
     fn clap_command(&self) -> ClapCommand {
-        ClapCommand::new(self.name())
-            .about(self.about())
-            .arg(
-                Arg::new("path")
-                    .long("path")
-                    .value_name("DIR")
-                    .required(true)
-                    .help("Directory with manifest.json and markdown chunks"),
-            )
+        ClapCommand::new(self.name()).about(self.about()).arg(
+            Arg::new("path")
+                .long("path")
+                .value_name("DIR")
+                .required(true)
+                .help("Directory with manifest.json and markdown chunks"),
+        )
     }
 
     fn run(&self, matches: &clap::ArgMatches) -> Result<Response, crate::models::ToolkitError> {
@@ -35,13 +33,15 @@ impl Command for RagIndex {
             .unwrap_or_default();
         let cfg = Config::from_env();
 
-        let stats = rag::index_kb(std::path::Path::new(path), &cfg).map_err(|e| {
-            crate::models::ToolkitError::new(
-                crate::models::ErrorCode::RagUnavailable,
-                e,
-                self.name(),
-            )
-        })?;
+        let stats = rag::rt()
+            .block_on(rag::index_kb(std::path::Path::new(path), &cfg))
+            .map_err(|e| {
+                crate::models::ToolkitError::new(
+                    crate::models::ErrorCode::RagUnavailable,
+                    e,
+                    self.name(),
+                )
+            })?;
 
         Ok(Response::RagIndex(RagIndexResponse {
             schema_version: SCHEMA_VERSION,

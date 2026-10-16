@@ -4,11 +4,20 @@ pub mod qdrant;
 use crate::config::Config;
 use crate::lint;
 use crate::models::{RagRef, RagResponse, SCHEMA_VERSION};
+use reqwest::Client;
 
 const SNIPPET_MAX_CHARS: usize = 300;
 
-pub fn run(code: &str, rule_context: &str, limit: usize, cfg: &Config) -> RagResponse {
-    let violations = lint::run(code, false).violations;
+/// Runtime для RAG-команд (CLI одноразовый, неблочные команды tokio не трогают).
+pub fn rt() -> tokio::runtime::Runtime {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+}
+
+pub async fn run(code: &str, rule_context: &str, limit: usize, cfg: &Config) -> RagResponse {
+    let client = Client::new();
 
     let query = if rule_context.trim().is_empty() {
         &code[..code.floor_char_boundary(code.len().min(2000))]
@@ -16,10 +25,18 @@ pub fn run(code: &str, rule_context: &str, limit: usize, cfg: &Config) -> RagRes
         rule_context
     };
 
+    // lint (CPU) и embed (сеть) независимо — гоняем параллельно.
+    let code_owned = code.to_string();
+    let (lint_res, refs_res) = tokio::join!(
+        tokio::task::spawn_blocking(move || lint::run(&code_owned, false).violations),
+        fetch_refs(&client, cfg, query, limit),
+    );
+
+    let violations = lint_res.unwrap_or_default();
     let mut rag_refs = Vec::new();
     let mut rag_degraded = false;
 
-    match fetch_refs(cfg, query, limit) {
+    match refs_res {
         Ok(refs) => rag_refs = refs,
         Err(e) => {
             rag_degraded = true;
@@ -45,9 +62,14 @@ pub fn run(code: &str, rule_context: &str, limit: usize, cfg: &Config) -> RagRes
     }
 }
 
-fn fetch_refs(cfg: &Config, query: &str, limit: usize) -> Result<Vec<RagRef>, String> {
-    let vector = ollama::embed(cfg, query)?;
-    let hits = qdrant::search(cfg, &vector, limit, None)?;
+async fn fetch_refs(
+    client: &Client,
+    cfg: &Config,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<RagRef>, String> {
+    let vector = ollama::embed(client, cfg, query).await?;
+    let hits = qdrant::search(client, cfg, &vector, limit, None).await?;
     Ok(hits
         .into_iter()
         .map(|hit| {
@@ -98,26 +120,31 @@ pub struct UpsertPoint {
 }
 
 /// Поиск по документации: embed(query) → Qdrant search (+фильтр peripheral).
-pub fn query(
+pub async fn query(
     text: &str,
     peripheral: &str,
     limit: usize,
     cfg: &Config,
 ) -> Result<Vec<crate::models::DocHit>, String> {
-    let vector = ollama::embed(cfg, text)?;
+    let client = Client::new();
+    let vector = ollama::embed(&client, cfg, text).await?;
     let filter = if peripheral.trim().is_empty() {
         None
     } else {
         Some(qdrant::peripheral_filter(peripheral))
     };
-    let hits = qdrant::search(cfg, &vector, limit, filter.as_ref())?;
+    let hits = qdrant::search(&client, cfg, &vector, limit, filter.as_ref()).await?;
     Ok(hits.into_iter().map(hit_to_doc).collect())
 }
 
 fn hit_to_doc(hit: qdrant::Hit) -> crate::models::DocHit {
     let p = hit.payload;
     crate::models::DocHit {
-        text: p.get("text").and_then(|v| v.as_str()).unwrap_or_default().into(),
+        text: p
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .into(),
         source: p
             .get("source_file")
             .and_then(|v| v.as_str())
@@ -149,21 +176,56 @@ pub fn deterministic_id(file: &str, chunk_idx: usize) -> i64 {
     use sha2::{Digest, Sha256};
     let input = format!("{file}:{chunk_idx}");
     let digest = Sha256::digest(input.as_bytes());
-    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect::<String>()
-        [..8]
+    let hex: String = digest
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>()[..8]
         .to_string();
     i64::from(u32::from_str_radix(&hex, 16).unwrap_or(0))
 }
 
-/// Upsert точек: текст каждой точки эмбеддится, точки грузятся батчами по 100.
-pub fn upsert_points(
-    points: Vec<UpsertPoint>,
+const EMBED_CONCURRENCY: usize = 8;
+const BATCH: usize = 100;
+
+/// Эмбеддинг группы текстов параллельно, порядок результатов = порядку входа.
+async fn embed_all(
+    client: &Client,
     cfg: &Config,
-) -> Result<usize, String> {
-    const BATCH: usize = 100;
+    texts: &[String],
+) -> Vec<Result<Vec<f32>, String>> {
+    let mut results = Vec::with_capacity(texts.len());
+    for group in texts.chunks(EMBED_CONCURRENCY) {
+        let handles: Vec<_> = group
+            .iter()
+            .map(|t| {
+                let text = t.clone();
+                let client = client.clone();
+                let cfg = cfg.clone();
+                tokio::spawn(async move { ollama::embed(&client, &cfg, &text).await })
+            })
+            .collect();
+        for handle in handles {
+            results.push(
+                handle
+                    .await
+                    .unwrap_or_else(|e| Err(format!("embed task failed: {e}"))),
+            );
+        }
+    }
+    results
+}
+
+/// Upsert точек: текст каждой точки эмбеддится параллельно, точки грузятся батчами по 100.
+pub async fn upsert_points(points: Vec<UpsertPoint>, cfg: &Config) -> Result<usize, String> {
+    let total = points.len();
+    let client = Client::new();
+
+    let texts: Vec<String> = points.iter().map(|p| p.text.clone()).collect();
+    let vectors = embed_all(&client, cfg, &texts).await;
+
     let mut qdrant_points = Vec::with_capacity(points.len());
-    for point in &points {
-        let vector = ollama::embed(cfg, &point.text)?;
+    for (point, vec_res) in points.into_iter().zip(vectors) {
+        let vector = vec_res?;
         let mut payload = point.payload.clone();
         if !payload.is_object() {
             payload = serde_json::json!({});
@@ -175,12 +237,12 @@ pub fn upsert_points(
             "payload": payload,
         }));
         if qdrant_points.len() == BATCH {
-            qdrant::upsert(cfg, &qdrant_points)?;
+            qdrant::upsert(&client, cfg, &qdrant_points).await?;
             qdrant_points.clear();
         }
     }
-    qdrant::upsert(cfg, &qdrant_points)?;
-    Ok(points.len())
+    qdrant::upsert(&client, cfg, &qdrant_points).await?;
+    Ok(total)
 }
 
 /// Статистика индексации (CONTRACT.md §7).
@@ -198,7 +260,7 @@ const MIN_CHUNK_CHARS: usize = 50;
 /// Индексация kb-каталога по manifest.json (parity со scripts/index_docs.py):
 /// маленькие файлы — одна точка, большие (>30000) — чанки по заголовкам "### ".
 /// Id детерминированные (deterministic_id), повторный запуск перезаписывает точки.
-pub fn index_kb(dir: &std::path::Path, cfg: &Config) -> Result<IndexStats, String> {
+pub async fn index_kb(dir: &std::path::Path, cfg: &Config) -> Result<IndexStats, String> {
     let manifest_path = dir.join("manifest.json");
     let manifest_raw = std::fs::read_to_string(&manifest_path)
         .map_err(|e| format!("failed to read {}: {e}", manifest_path.display()))?;
@@ -211,7 +273,11 @@ pub fn index_kb(dir: &std::path::Path, cfg: &Config) -> Result<IndexStats, Strin
 
     let mut stats = IndexStats::default();
     for entry in files {
-        if entry.get("not_on_f407").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if entry
+            .get("not_on_f407")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             stats.skipped += 1;
             continue;
         }
@@ -277,7 +343,7 @@ pub fn index_kb(dir: &std::path::Path, cfg: &Config) -> Result<IndexStats, Strin
         }
 
         let count = points.len();
-        match upsert_points(points, cfg) {
+        match upsert_points(points, cfg).await {
             Ok(_) => {
                 stats.files += 1;
                 stats.chunks += count;
@@ -373,7 +439,8 @@ mod tests {
             "",
             5,
             &test_cfg(&ollama_server.uri(), &qdrant_server.uri()),
-        );
+        )
+        .await;
         assert!(!r.rag_degraded);
         assert_eq!(r.violations.len(), 1);
         assert_eq!(r.rag_refs.len(), 1);
@@ -387,7 +454,7 @@ mod tests {
     async fn degrades_when_rag_unreachable() {
         let cfg = test_cfg("http://127.0.0.1:1", "http://127.0.0.1:1");
         let code = tests_code_with_ccm_dma();
-        let r = run(&code, "", 5, &cfg);
+        let r = run(&code, "", 5, &cfg).await;
         assert!(r.rag_degraded);
         assert_eq!(r.rag_refs, Vec::new());
         assert_eq!(r.violations.len(), 1, "violations survive degradation");
@@ -418,7 +485,8 @@ mod tests {
             "DMA buffer placement",
             5,
             &test_cfg(&ollama_server.uri(), &qdrant_server.uri()),
-        );
+        )
+        .await;
         assert!(!r.rag_degraded);
         assert!(r.rag_refs.is_empty());
     }
