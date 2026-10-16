@@ -4,6 +4,9 @@ use std::io::Read;
 use crate::models::{Response, ToolkitError};
 
 pub mod analyze;
+pub mod ctx_load;
+pub mod ctx_save;
+pub mod ctx_search;
 pub mod flow_analysis;
 pub mod generate_docs;
 pub mod lint;
@@ -32,6 +35,9 @@ pub fn registry() -> Vec<Box<dyn Command>> {
         Box::new(rag_query::RagQuery),
         Box::new(rag_upsert::RagUpsert),
         Box::new(rag_index::RagIndex),
+        Box::new(ctx_save::CtxSave),
+        Box::new(ctx_load::CtxLoad),
+        Box::new(ctx_search::CtxSearch),
     ]
 }
 

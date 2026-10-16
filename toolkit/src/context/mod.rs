@@ -112,6 +112,150 @@ pub fn project_filter(project_path: &str) -> serde_json::Value {
     })
 }
 
+/// Config с коллекцией контекста (общие URL/ключ/модель — из env).
+fn ctx_cfg(cfg: &crate::config::Config, collection: &str) -> crate::config::Config {
+    let mut c = cfg.clone();
+    c.collection = collection.to_string();
+    c
+}
+
+/// ctx-save: эмбеддинг text каждой записи и upsert в коллекцию контекста.
+/// Коллекция создаётся при отсутствии. Возвращает число сохранённых точек.
+pub fn save(
+    cfg: &crate::config::Config,
+    collection: &str,
+    entries: Vec<ProjectContext>,
+) -> Result<usize, String> {
+    use crate::rag::ollama;
+    if entries.is_empty() {
+        return Ok(0);
+    }
+    ensure_collection(&cfg.qdrant_url, cfg.qdrant_api_key.as_deref(), collection)?;
+    let c = ctx_cfg(cfg, collection);
+    let mut points = Vec::with_capacity(entries.len());
+    for e in &entries {
+        let mut point = e.to_point();
+        point["vector"] = serde_json::json!(ollama::embed(&c, &e.text)?);
+        points.push(point);
+    }
+    crate::rag::qdrant::upsert(&c, &points)?;
+    Ok(points.len())
+}
+
+/// ctx-load: чтение payload точек проекта (без эмбеддинга).
+/// key = Some — точечная выборка одного ключа, None — весь проект.
+pub fn load(
+    cfg: &crate::config::Config,
+    collection: &str,
+    project_path: &str,
+    key: Option<&str>,
+) -> Result<Vec<crate::models::CtxEntry>, String> {
+    let agent: ureq::Agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(30))
+        .build();
+    let mut filter = project_filter(project_path);
+    if let Some(k) = key {
+        filter["must"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "key": "ctx_key",
+                "match": { "value": k },
+            }));
+    }
+    let body = serde_json::json!({
+        "filter": filter,
+        "limit": 1000,
+        "with_payload": true,
+    });
+    let mut req = agent.post(&format!(
+        "{}/collections/{}/points/scroll",
+        cfg.qdrant_url.trim_end_matches('/'),
+        collection
+    ));
+    if let Some(api) = &cfg.qdrant_api_key {
+        req = req.set("api-key", api);
+    }
+    let resp = req
+        .send_json(&body)
+        .map_err(|e| format!("qdrant request failed: {e}"))?;
+    let parsed: serde_json::Value = resp
+        .into_json()
+        .map_err(|e| format!("qdrant decode failed: {e}"))?;
+
+    let mut entries = Vec::new();
+    for p in parsed["result"]["points"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+    {
+        let pl = &p["payload"];
+        entries.push(crate::models::CtxEntry {
+            ctx_key: pl["ctx_key"].as_str().unwrap_or_default().into(),
+            doc_type: pl["doc_type"].as_str().unwrap_or_default().into(),
+            text: pl["text"].as_str().unwrap_or_default().into(),
+            peripherals: str_vec(&pl["peripherals"]),
+            interrupts: str_vec(&pl["interrupts"]),
+            user_preferences: prefs_map(&pl["user_preferences"]),
+            modification: pl
+                .get("modification")
+                .filter(|m| !m.is_null())
+                .and_then(|m| serde_json::from_value(m.clone()).ok()),
+            timestamp: pl["modification"]["timestamp"].as_i64(),
+        });
+    }
+    entries.sort_by_key(|e| e.timestamp.unwrap_or(0));
+    Ok(entries)
+}
+
+/// ctx-search: семантический поиск по контексту проекта.
+pub fn search(
+    cfg: &crate::config::Config,
+    collection: &str,
+    project_path: &str,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<crate::models::CtxHit>, String> {
+    use crate::rag::ollama;
+    let c = ctx_cfg(cfg, collection);
+    let vector = ollama::embed(&c, query)?;
+    let filter = project_filter(project_path);
+    let hits = crate::rag::qdrant::search(&c, &vector, limit, Some(&filter))?;
+    Ok(hits
+        .into_iter()
+        .map(|hit| {
+            let pl = &hit.payload;
+            crate::models::CtxHit {
+                score: hit.score,
+                project_path: pl["project_path"].as_str().unwrap_or_default().into(),
+                ctx_key: pl["ctx_key"].as_str().unwrap_or_default().into(),
+                doc_type: pl["doc_type"].as_str().unwrap_or_default().into(),
+                text: pl["text"].as_str().unwrap_or_default().into(),
+            }
+        })
+        .collect())
+}
+
+fn str_vec(v: &serde_json::Value) -> Vec<String> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn prefs_map(v: &serde_json::Value) -> std::collections::HashMap<String, String> {
+    v.as_object()
+        .map(|o| {
+            o.iter()
+                .filter_map(|(k, x)| x.as_str().map(|s| (k.clone(), s.to_string())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Создание коллекции контекста, если её нет (768 dim Cosine + bm25 —
 /// та же геометрия, что у документационной коллекции). Идемпотентно.
 pub fn ensure_collection(

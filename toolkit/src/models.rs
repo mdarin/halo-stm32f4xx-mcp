@@ -195,6 +195,63 @@ pub struct RagIndexResponse {
     pub errors: usize,
 }
 
+/// Хит ctx-search (CONTRACT.md §10).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CtxHit {
+    pub score: f64,
+    pub project_path: String,
+    pub ctx_key: String,
+    pub doc_type: String,
+    pub text: String,
+}
+
+/// Ответ ctx-save (CONTRACT.md §10).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CtxSaveResponse {
+    pub schema_version: u32,
+    pub command: String,
+    pub saved: usize,
+    pub collection: String,
+}
+
+/// Запись контекста в ответе ctx-load.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CtxEntry {
+    pub ctx_key: String,
+    pub doc_type: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub peripherals: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interrupts: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub user_preferences: std::collections::HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modification: Option<crate::context::Modification>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<i64>,
+}
+
+/// Ответ ctx-load (CONTRACT.md §10).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CtxLoadResponse {
+    pub schema_version: u32,
+    pub command: String,
+    pub project_path: String,
+    pub count: usize,
+    pub entries: Vec<CtxEntry>,
+}
+
+/// Ответ ctx-search (CONTRACT.md §10).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CtxSearchResponse {
+    pub schema_version: u32,
+    pub command: String,
+    pub project_path: String,
+    pub query: String,
+    pub results: Vec<CtxHit>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Response {
@@ -206,6 +263,9 @@ pub enum Response {
     RagQuery(RagQueryResponse),
     RagUpsert(RagUpsertResponse),
     RagIndex(RagIndexResponse),
+    CtxSave(CtxSaveResponse),
+    CtxLoad(CtxLoadResponse),
+    CtxSearch(CtxSearchResponse),
 }
 
 #[allow(dead_code)]
