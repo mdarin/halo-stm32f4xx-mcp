@@ -14,6 +14,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// ServerVersion — semver MCP-сервера (single source of truth).
+// MINOR — добавление/изменение инструментов, PATCH — исправления.
+const ServerVersion = "0.6.0"
+
 // QueryDocsInput — входные параметры для query_hardware_docs
 type QueryDocsInput struct {
 	Query      string `json:"query" jsonschema:"the search query for hardware documentation"`
@@ -436,7 +440,7 @@ func main() {
 	server := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "stm32f407-mcp",
-			Version: "0.6.0", // Фаза 1: +3 advanced tools через Rust toolkit
+			Version: ServerVersion,
 		},
 		nil, // options
 	)
@@ -528,7 +532,7 @@ func main() {
 	}
 
 	log.Printf("Registered tools: query_hardware_docs, check_f407_rules, cubemx_read_user_blocks, cubemx_insert_code, cubemx_find_weak_overrides, cubemx_validate_project%s", advancedToolsLogSuffix())
-	log.Printf("MCP Server ready (v0.6.0, %d tools), listening on stdin...", 6+advancedToolsCount())
+	log.Printf("MCP Server ready (v%s, %d tools), listening on stdin...", ServerVersion, 6+advancedToolsCount())
 
 	// Запуск STDIO транспорта
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {

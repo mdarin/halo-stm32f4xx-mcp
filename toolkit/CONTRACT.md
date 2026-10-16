@@ -289,16 +289,25 @@ peripheral/registers/tags/not_on_f407`; база знаний — `kb/stm32f4xx/
 {"schema_version": 1, "command": "rag-index", "files": 433, "chunks": 363, "skipped": 2, "errors": 0}
 ```
 
-## 8. `--version`
+## 8. `--version` и semver
 
 `toolkit --version` (аргументы CLI, не stdin):
 
 ```
-toolkit 0.1.0 (contract 1.0)
+toolkit 1.0.0 (contract 1.0)
 ```
 
 `contract 1.0` — версия настоящего контракта. Go ToolkitClient (Ф1-6) парсит `contract N.M`
 и отказывается работать при несовпадении мажорной версии.
+
+Политика semver (обе компоненты):
+
+- **toolkit**: версия — single source `version` в `Cargo.toml`, в `--version` попадает
+  автоматически (`CARGO_PKG_VERSION`). МАЖОР = мажор контракта (изменение/удаление
+  команд или формата вывода без обратной совместимости ⇒ контракт-минор-инкремент,
+  менять синхронно). МИНОР — новая команда/флаг, ПАТЧ — исправления.
+- **mcp-server**: константа `ServerVersion` в `mcp-server/main.go` (single source,
+  попадает в serverInfo и startup-лог). МИНОР — новые инструменты, ПАТЧ — исправления.
 
 ## 9. Совместимость
 

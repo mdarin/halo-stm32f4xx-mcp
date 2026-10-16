@@ -161,7 +161,7 @@ func NewClientWithPath(path string, timeout time.Duration) *Client {
 func (c *Client) Path() string { return c.path }
 
 // Version выполняет `toolkit --version` и парсит вывод
-// "toolkit 0.1.0 (contract 1.0)".
+// "toolkit <semver> (contract 1.0)" — semver из Cargo.toml toolkit.
 func (c *Client) Version(ctx context.Context) (VersionInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()

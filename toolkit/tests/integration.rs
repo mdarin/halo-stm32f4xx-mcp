@@ -39,7 +39,9 @@ fn version_output() -> String {
 #[test]
 fn version_reports_contract() {
     let v = version_output();
-    assert!(v.starts_with("toolkit 0.1.0 (contract 1.0)"), "got: {v}");
+    // semver из Cargo.toml + мажор контракта; точный патч не фиксируем
+    assert!(v.starts_with("toolkit 1."), "got: {v}");
+    assert!(v.contains("(contract 1.0)"), "got: {v}");
 }
 
 #[test]

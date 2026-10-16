@@ -1,6 +1,6 @@
 [package]
 name = "toolkit"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "STM32F407 development toolkit: analyze, lint, flow-analysis, generate-docs, rag-search"
 license = "MIT"
