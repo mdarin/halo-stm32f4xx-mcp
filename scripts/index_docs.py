@@ -16,6 +16,7 @@
 
 import json
 import hashlib
+import os
 import time
 import sys
 import requests
@@ -34,13 +35,16 @@ KB_DIR = Path("kb")
 MANIFEST_PATH = KB_DIR / "manifest.json"
 INDEX_MD_PATH = KB_DIR / "INDEX.md"
 
-QDRANT_URL = "http://localhost:6333"
-COLLECTION = "stm32f407_docs"
-OLLAMA_URL = "http://localhost:11434/api/embed"
-EMBED_MODEL = "nomic-embed-text"
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
+COLLECTION = os.environ.get("COLLECTION", "stm32f407_docs")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434") + "/api/embed"
+EMBED_MODEL = os.environ.get("EMBED_MODEL", "nomic-embed-text")
 
 CHUNK_SIZE = 800  # символов
 CHUNK_OVERLAP = 100  # символов перекрытия
+
+QDRANT_HEADERS = {"api-key": QDRANT_API_KEY} if QDRANT_API_KEY else {}
 
 # ============================================================================
 # Qdrant
@@ -51,7 +55,7 @@ def create_collection():
     print(f"Checking collection '{COLLECTION}'...")
     
     # Проверка существования
-    resp = requests.get(f"{QDRANT_URL}/collections")
+    resp = requests.get(f"{QDRANT_URL}/collections", headers=QDRANT_HEADERS)
     if resp.status_code == 200:
         collections = resp.json().get("result", {}).get("collections", [])
         if any(c["name"] == COLLECTION for c in collections):
@@ -63,7 +67,7 @@ def create_collection():
     resp = requests.put(f"{QDRANT_URL}/collections/{COLLECTION}", json={
         "vectors": {"size": 768, "distance": "Cosine"},
         "sparse_vectors": {"bm25": {}}
-    })
+    }, headers=QDRANT_HEADERS)
     
     if resp.status_code not in [200, 201]:
         raise RuntimeError(f"Failed to create collection: {resp.text}")
@@ -74,7 +78,7 @@ def create_collection():
 def check_qdrant():
     """Проверка доступности Qdrant"""
     try:
-        resp = requests.get(f"{QDRANT_URL}/collections", timeout=5)
+        resp = requests.get(f"{QDRANT_URL}/collections", headers=QDRANT_HEADERS, timeout=5)
         resp.raise_for_status()
         return True
     except Exception as e:
@@ -106,7 +110,7 @@ def embed(text, retries=3):
 def check_ollama():
     """Проверка доступности Ollama"""
     try:
-        resp = requests.get("http://localhost:11434/api/tags", timeout=5)
+        resp = requests.get(OLLAMA_URL.replace("/api/embed", "/api/tags"), timeout=5)
         resp.raise_for_status()
         models = [m["name"] for m in resp.json().get("models", [])]
         # Проверка: модель может быть "nomic-embed-text" или "nomic-embed-text:latest"
@@ -266,7 +270,8 @@ def upload_batch(points, batch_size=100):
         batch = points[i:i+batch_size]
         resp = requests.put(
             f"{QDRANT_URL}/collections/{COLLECTION}/points",
-            json={"points": batch}
+            json={"points": batch},
+            headers=QDRANT_HEADERS
         )
         if resp.status_code not in [200, 201]:
             raise RuntimeError(f"Upload failed: {resp.text}")
@@ -310,7 +315,8 @@ def index_all():
     try:
         resp = requests.post(
             f"{QDRANT_URL}/collections/{COLLECTION}/points/scroll",
-            json={"limit": 1000, "with_payload": {"include": ["source_file"]}}
+            json={"limit": 1000, "with_payload": {"include": ["source_file"]}},
+            headers=QDRANT_HEADERS
         )
         if resp.status_code == 200:
             points = resp.json().get("result", {}).get("points", [])

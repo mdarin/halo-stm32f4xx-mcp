@@ -409,7 +409,7 @@ func main() {
 	log.Printf("Collection: %s", cfg.Collection)
 
 	// Инициализация компонентов
-	qdrantClient := qdrant.NewClient(cfg.QdrantURL)
+	qdrantClient := qdrant.NewClient(cfg.QdrantURL, cfg.QdrantAPIKey)
 	embedderClient := embedder.NewClient(cfg.OllamaURL, cfg.Model)
 	globalSearcher = searcher.NewSearcher(qdrantClient, embedderClient, cfg.Collection)
 	globalParser = cubemx.NewParser()

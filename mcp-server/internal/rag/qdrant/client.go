@@ -11,6 +11,7 @@ import (
 
 type Client struct {
 	baseURL    string
+	apiKey     string
 	httpClient *http.Client
 }
 
@@ -31,9 +32,14 @@ type SearchHit struct {
 	Payload map[string]interface{} `json:"payload"`
 }
 
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL string, apiKey ...string) *Client {
+	key := ""
+	if len(apiKey) > 0 {
+		key = apiKey[0]
+	}
 	return &Client{
 		baseURL: baseURL,
+		apiKey:  key,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -62,6 +68,9 @@ func (c *Client) Search(ctx context.Context, collection string, vector []float32
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("api-key", c.apiKey)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
