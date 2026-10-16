@@ -2,7 +2,7 @@ use clap::Command as ClapCommand;
 
 use super::{code_from, Command};
 use crate::config::Config;
-use crate::models::{RagResponse, Response, ToolkitError, SCHEMA_VERSION};
+use crate::models::{Response, ToolkitError};
 
 pub struct RagSearch;
 
@@ -25,16 +25,17 @@ impl Command for RagSearch {
 
     fn run(&self, matches: &clap::ArgMatches) -> Result<Response, ToolkitError> {
         let code = code_from(matches, self.name())?;
-        let _rule_context = matches.get_one::<String>("rule_context");
-        let _limit = matches.get_one::<usize>("limit");
+        let rule_context = matches
+            .get_one::<String>("rule_context")
+            .cloned()
+            .unwrap_or_default();
+        let limit = matches.get_one::<usize>("limit").copied().unwrap_or(5);
         let cfg = Config::from_env();
-        let _ = (&code, &cfg);
-        Ok(Response::RagSearch(RagResponse {
-            schema_version: SCHEMA_VERSION,
-            command: self.name().into(),
-            violations: vec![],
-            rag_refs: vec![],
-            rag_degraded: false,
-        }))
+        Ok(Response::RagSearch(crate::rag::run(
+            &code,
+            &rule_context,
+            limit,
+            &cfg,
+        )))
     }
 }

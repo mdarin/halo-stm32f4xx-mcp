@@ -4,6 +4,7 @@ mod config;
 mod docs_gen;
 mod lint;
 mod models;
+mod rag;
 
 use std::io::Write;
 use std::process::ExitCode;

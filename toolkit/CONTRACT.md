@@ -210,6 +210,23 @@ AST-анализ + обогащение контекстом из Qdrant (эмб
 Деградация: RAG недоступен → `violations` заполняются, `rag_refs: []`, `rag_degraded: true`,
 в stderr — JSON-ошибка `E_RAG_UNAVAILABLE` (информационная), код выхода `0`.
 
+Конфигурация (env, наследуются от MCP-сервера через `exec.Command`):
+
+| Переменная | По умолчанию | Назначение |
+|---|---|---|
+| `QDRANT_URL` | `http://localhost:6333` | Адрес Qdrant (POST `/collections/{COLLECTION}/points/search`, таймаут 30 c) |
+| `QDRANT_API_KEY` | — (не задан) | Заголовок `api-key`, если задан |
+| `OLLAMA_URL` | `http://localhost:11434` | Адрес Ollama (POST `/api/embed`, таймаут 60 c, 3 попытки с backoff 1/2 c) |
+| `COLLECTION` | `stm32f407_docs` | Коллекция Qdrant |
+| `EMBED_MODEL` | `nomic-embed-text` | Модель эмбеддингов |
+
+Запрос к эмбеддеру: `rule_context`, если задан, иначе первые 2000 символов кода.
+`snippet` — первые 300 символов payload-поля `text`. Схемы запросов совпадают с Go-клиентами
+(`mcp-server/internal/rag/qdrant/client.go`, `embedder/client.go`, `searcher/searcher.go`):
+формат `/api/embed` (`{model, input}` → `{embeddings}`), формат точки поиска
+(`{vector, limit, with_payload: true, filter?}` → `{result: [{id, score, payload}]}`),
+поля payload: `text`, `source_file`, `peripheral`, `chapter`, `section`, `title`.
+
 ## 6. `--version`
 
 `toolkit --version` (аргументы CLI, не stdin):

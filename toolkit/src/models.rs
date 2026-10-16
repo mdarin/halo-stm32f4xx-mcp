@@ -134,7 +134,7 @@ pub struct DocsResponse {
     pub functions_skipped: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RagRef {
     pub score: f64,
     pub source: String,

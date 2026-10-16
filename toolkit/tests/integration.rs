@@ -122,7 +122,15 @@ fn rag_search_contract_shape() {
     assert_eq!(resp["command"], "rag-search");
     assert!(resp["violations"].is_array());
     assert!(resp["rag_refs"].is_array());
-    assert_eq!(resp["rag_degraded"], false);
+    assert_eq!(
+        resp["rag_refs"].as_array().unwrap().len(),
+        0,
+        "no RAG services in test env -> degraded"
+    );
+    assert_eq!(
+        resp["rag_degraded"], true,
+        "degradation, not failure (exit {code:?})"
+    );
 }
 
 #[test]
