@@ -117,7 +117,11 @@ pub fn query(
 fn hit_to_doc(hit: qdrant::Hit) -> crate::models::DocHit {
     let p = hit.payload;
     crate::models::DocHit {
-        text: p.get("text").and_then(|v| v.as_str()).unwrap_or_default().into(),
+        text: p
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .into(),
         source: p
             .get("source_file")
             .and_then(|v| v.as_str())
@@ -149,17 +153,16 @@ pub fn deterministic_id(file: &str, chunk_idx: usize) -> i64 {
     use sha2::{Digest, Sha256};
     let input = format!("{file}:{chunk_idx}");
     let digest = Sha256::digest(input.as_bytes());
-    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect::<String>()
-        [..8]
+    let hex: String = digest
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>()[..8]
         .to_string();
     i64::from(u32::from_str_radix(&hex, 16).unwrap_or(0))
 }
 
 /// Upsert точек: текст каждой точки эмбеддится, точки грузятся батчами по 100.
-pub fn upsert_points(
-    points: Vec<UpsertPoint>,
-    cfg: &Config,
-) -> Result<usize, String> {
+pub fn upsert_points(points: Vec<UpsertPoint>, cfg: &Config) -> Result<usize, String> {
     const BATCH: usize = 100;
     let mut qdrant_points = Vec::with_capacity(points.len());
     for point in &points {
@@ -211,7 +214,11 @@ pub fn index_kb(dir: &std::path::Path, cfg: &Config) -> Result<IndexStats, Strin
 
     let mut stats = IndexStats::default();
     for entry in files {
-        if entry.get("not_on_f407").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if entry
+            .get("not_on_f407")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             stats.skipped += 1;
             continue;
         }

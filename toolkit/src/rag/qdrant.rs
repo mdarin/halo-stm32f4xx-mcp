@@ -82,7 +82,10 @@ pub fn upsert(cfg: &Config, points: &[serde_json::Value]) -> Result<(), String> 
         .map_err(|e| format!("qdrant upsert failed: {e}"))?;
 
     if response.status() != 200 {
-        return Err(format!("qdrant upsert returned status {}", response.status()));
+        return Err(format!(
+            "qdrant upsert returned status {}",
+            response.status()
+        ));
     }
     Ok(())
 }

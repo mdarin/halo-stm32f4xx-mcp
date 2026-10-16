@@ -314,3 +314,38 @@ toolkit 1.0.0 (contract 1.0)
 - Мажорная версия контракта растёт при несовместимых изменениях схем.
 - Добавление новых опциональных полей — минорная версия, обратно совместимо.
 - Все поля запроса кроме `schema_version` и `command` имеют значения по умолчанию.
+
+## 10. Контекстная память агента (Фаза 5)
+
+Отдельная коллекция Qdrant `stm32_project_context` (env `CONTEXT_COLLECTION`).
+Геометрия как у документационной: 768 dim Cosine + sparse `bm25`. Владелец
+коллекции — toolkit; Go mcp-server прямого доступа не имеет.
+
+Точка = одна запись контекста:
+
+```json
+{
+  "id": 2625818061,
+  "payload": {
+    "project_path": "/abs/path/to/project",
+    "ctx_key": "summary",
+    "doc_type": "project_context",
+    "text": "TIM3 используется для PWM...",
+    "peripherals": ["GPIO", "TIM3", "ADC1", "USART2"],
+    "interrupts": ["TIM3_IRQHandler"],
+    "user_preferences": {"style": "doxygen"},
+    "modification": null,
+    "schema_version": 1
+  }
+}
+```
+
+- `doc_type`: `project_context` | `modification` | `preference`.
+- `modification` (для `doc_type: modification`): `{file, block, mode, bytes, timestamp}`.
+- id детерминирован: первые 8 hex SHA-256 от `"{project_path}:{ctx_key}"` —
+  повторная запись того же ключа перезаписывает точку (идемпотентный upsert).
+- Поиск всегда с фильтром `project_path` (match).
+- CLI-команды `ctx-save` / `ctx-load` / `ctx-search` / `ctx-extract` (Ф5-2/Ф5-3),
+  MCP-инструменты `project_context_*` (Ф5-5) — обёртки exec, формат §10.
+- Ошибки: как §6 — `E_RAG_UNAVAILABLE` при недоступных Qdrant/Ollama, exit 1.
+

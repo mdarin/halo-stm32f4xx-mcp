@@ -17,15 +17,13 @@ impl Command for RagIndex {
     }
 
     fn clap_command(&self) -> ClapCommand {
-        ClapCommand::new(self.name())
-            .about(self.about())
-            .arg(
-                Arg::new("path")
-                    .long("path")
-                    .value_name("DIR")
-                    .required(true)
-                    .help("Directory with manifest.json and markdown chunks"),
-            )
+        ClapCommand::new(self.name()).about(self.about()).arg(
+            Arg::new("path")
+                .long("path")
+                .value_name("DIR")
+                .required(true)
+                .help("Directory with manifest.json and markdown chunks"),
+        )
     }
 
     fn run(&self, matches: &clap::ArgMatches) -> Result<Response, crate::models::ToolkitError> {
