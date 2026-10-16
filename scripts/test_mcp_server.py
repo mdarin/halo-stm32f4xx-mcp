@@ -3,6 +3,7 @@
 Тест MCP сервера через STDIO protocol
 """
 import subprocess
+import os
 import json
 import sys
 import time
@@ -165,7 +166,7 @@ def main():
     # Запуск MCP сервера
     print("\n🚀 Starting MCP server...")
     proc = subprocess.Popen(
-        ["mcp-server/mcp-server.exe"],
+        [os.environ.get("MCP_SERVER_PATH", "mcp-server/mcp-server")],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

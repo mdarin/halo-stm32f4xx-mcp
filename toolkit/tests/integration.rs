@@ -122,15 +122,21 @@ fn rag_search_contract_shape() {
     assert_eq!(resp["command"], "rag-search");
     assert!(resp["violations"].is_array());
     assert!(resp["rag_refs"].is_array());
-    assert_eq!(
-        resp["rag_refs"].as_array().unwrap().len(),
-        0,
-        "no RAG services in test env -> degraded"
-    );
-    assert_eq!(
-        resp["rag_degraded"], true,
-        "degradation, not failure (exit {code:?})"
-    );
+    // RAG-сервисы могут быть доступны (локальный Qdrant+Ollama) или нет:
+    // либо живой поиск (refs + degraded=false), либо деградация (пусто + degraded=true).
+    let degraded = resp["rag_degraded"].as_bool().unwrap();
+    if degraded {
+        assert_eq!(
+            resp["rag_refs"].as_array().unwrap().len(),
+            0,
+            "degraded -> no refs"
+        );
+    } else {
+        assert!(
+            !resp["rag_refs"].as_array().unwrap().is_empty(),
+            "live RAG -> refs present"
+        );
+    }
 }
 
 #[test]
