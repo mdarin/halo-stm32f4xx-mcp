@@ -231,7 +231,8 @@ pub fn index_kb(dir: &std::path::Path, cfg: &Config) -> Result<IndexStats, Strin
         };
         let content = match std::fs::read_to_string(dir.join(&file_name)) {
             Ok(c) => c,
-            Err(_) => {
+            Err(e) => {
+                eprintln!("ERROR reading {}: {}", file_name, e);
                 stats.errors += 1;
                 continue;
             }
@@ -289,7 +290,8 @@ pub fn index_kb(dir: &std::path::Path, cfg: &Config) -> Result<IndexStats, Strin
                 stats.files += 1;
                 stats.chunks += count;
             }
-            Err(_) => {
+            Err(e) => {
+                eprintln!("ERROR upserting {}: {}", file_name, e);
                 stats.errors += 1;
             }
         }
